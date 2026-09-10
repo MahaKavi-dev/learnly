@@ -34,9 +34,10 @@ export default function ReadingScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [micState, setMicState] = useState<MicState>('IDLE');
   const [userTranscript, setUserTranscript] = useState<string | null>(null);
+  const [emptyTranscriptWarning, setEmptyTranscriptWarning] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
 
-  // API State
+  // API Assessment State
   const [isAssessing, setIsAssessing] = useState(false);
   const [assessmentResult, setAssessmentResult] = useState<AssessmentResponse | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export default function ReadingScreen() {
   const startReading = async () => {
     try {
       setMicState('REQUESTING');
+      setEmptyTranscriptWarning(null);
 
       // Check existing recording permission
       const currentPerm = await getRecordingPermissionsAsync();
@@ -75,31 +77,41 @@ export default function ReadingScreen() {
 
   /**
    * 2. stopReading()
-   * Returns mic state to ready and captures transcript.
+   * Returns mic state to ready and passes captured transcript to handleTranscript().
    */
   const stopReading = () => {
     setMicState('READY');
-    // Captures transcript (mock for now, will connect to STT stream in separate task)
+    // Captures transcript (mock for now; M2's STT pipeline will invoke handleTranscript)
     handleTranscript(currentExercise.text);
   };
 
   /**
    * 3. handleTranscript(transcript)
-   * Stores transcript in React state and resets previous API results.
+   * STT Integration Point: Receives transcript string from STT, stores in state,
+   * and clears previous assessment/warning messages.
    */
   const handleTranscript = (transcript: string) => {
     setUserTranscript(transcript);
+    setEmptyTranscriptWarning(null);
     setAssessmentResult(null);
     setApiError(null);
   };
 
   /**
    * 4. submitAssessment(transcript)
-   * Sends payload { exerciseId, expectedText, userTranscript, language } to POST /api/assess
+   * Validates transcript and sends payload to POST /api/assess
    */
   const submitAssessment = async (transcript: string | null) => {
-    if (!transcript || isAssessing) return;
+    if (!transcript || !transcript.trim()) {
+      setEmptyTranscriptWarning(
+        lang === 'ta'
+          ? 'தயவுசெய்து முதலில் வாக்கியத்தை வாசிக்கவும்.'
+          : 'Please read the sentence first.'
+      );
+      return;
+    }
 
+    setEmptyTranscriptWarning(null);
     setIsAssessing(true);
     setApiError(null);
 
@@ -107,7 +119,7 @@ export default function ReadingScreen() {
       const result = await assessReading({
         exerciseId: currentExercise.id,
         expectedText: currentExercise.text,
-        userTranscript: transcript,
+        userTranscript: transcript.trim(),
         language: currentExercise.language,
       });
 
@@ -129,6 +141,7 @@ export default function ReadingScreen() {
    */
   const handleNextQuestion = () => {
     setUserTranscript(null);
+    setEmptyTranscriptWarning(null);
     setAssessmentResult(null);
     setApiError(null);
 
@@ -154,6 +167,7 @@ export default function ReadingScreen() {
     setCurrentIndex(0);
     setMicState('IDLE');
     setUserTranscript(null);
+    setEmptyTranscriptWarning(null);
     setAssessmentResult(null);
     setApiError(null);
     setIsCompleted(false);
@@ -336,11 +350,18 @@ export default function ReadingScreen() {
               {userTranscript && (
                 <View style={[styles.transcriptBox, { backgroundColor: theme.backgroundElement }]}>
                   <Text style={[styles.transcriptLabel, { color: theme.textSecondary }]}>
-                    {lang === 'ta' ? 'உங்கள் பதில்:' : 'Your response:'}
+                    {lang === 'ta' ? 'நீங்கள் கூறியது:' : 'You said:'}
                   </Text>
                   <Text style={[styles.transcriptText, { color: theme.text }]}>
                     "{userTranscript}"
                   </Text>
+                </View>
+              )}
+
+              {/* Empty Transcript Warning Banner */}
+              {emptyTranscriptWarning && (
+                <View style={styles.warningBanner}>
+                  <Text style={styles.warningText}>⚠️ {emptyTranscriptWarning}</Text>
                 </View>
               )}
 
@@ -419,11 +440,11 @@ export default function ReadingScreen() {
                 <Pressable
                   style={({ pressed }) => [
                     styles.primaryButton,
-                    (!userTranscript || isAssessing) && styles.buttonDisabled,
+                    isAssessing && styles.buttonDisabled,
                     pressed && styles.buttonPressed,
                   ]}
                   onPress={() => submitAssessment(userTranscript)}
-                  disabled={!userTranscript || isAssessing}
+                  disabled={isAssessing}
                   accessibilityRole="button"
                 >
                   <Text style={styles.primaryButtonText}>
@@ -662,6 +683,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     fontStyle: 'italic',
+  },
+  warningBanner: {
+    backgroundColor: '#FEF3C7',
+    padding: Spacing.three,
+    borderRadius: 12,
+    marginBottom: Spacing.four,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  warningText: {
+    color: '#92400E',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   loadingBanner: {
     flexDirection: 'row',
