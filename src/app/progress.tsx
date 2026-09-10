@@ -10,19 +10,18 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { BottomNavigation } from '@/components/ui/BottomNavigation';
+import { LanguageChip } from '@/components/ui/Chips';
+import { LearnlyCard } from '@/components/ui/LearnlyCard';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { subscribeGamificationState } from '@/services/gamification';
 import { Language } from '@/types/exercise';
 import { UserProgressState } from '@/types/gamification';
 import { checkBadges, getLevelProgressDetails } from '@/utils/gamification';
 
 export default function ProgressScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ lang?: string }>();
-
-  // Determine current language from route param (defaults to English)
   const lang: Language = params.lang === 'ta' ? 'ta' : 'en';
 
   const [progressState, setProgressState] = useState<UserProgressState | null>(null);
@@ -37,10 +36,10 @@ export default function ProgressScreen() {
   if (!progressState) {
     return (
       <SafeAreaView
-        style={[styles.safeArea, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}
+        style={[styles.safeArea, { backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' }]}
       >
-        <ActivityIndicator color="#4C6EF5" size="large" />
-        <Text style={{ marginTop: 12, color: theme.textSecondary, fontWeight: '600' }}>
+        <ActivityIndicator color="#4F46E5" size="large" />
+        <Text style={{ marginTop: 12, color: '#64748B', fontWeight: '700' }}>
           {lang === 'ta' ? 'முன்னேற்றம் ஏற்றப்படுகிறது...' : 'Loading progress...'}
         </Text>
       </SafeAreaView>
@@ -51,44 +50,29 @@ export default function ProgressScreen() {
   const badgesList = checkBadges(progressState);
 
   return (
-    <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: theme.background }]}
-      edges={['top', 'left', 'right']}
-    >
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F8FAFC' }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Top Header Bar */}
+          {/* Header */}
           <View style={styles.topBar}>
             <Pressable
-              style={({ pressed }) => [
-                styles.backButton,
-                { backgroundColor: theme.backgroundElement },
-                pressed && styles.buttonPressed,
-              ]}
+              style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
               onPress={() => router.back()}
-              accessibilityRole="button"
-              accessibilityLabel="Back to Home"
             >
-              <Text style={[styles.backButtonText, { color: theme.text }]}>← Back</Text>
+              <Text style={styles.backButtonText}>← Back</Text>
             </Pressable>
 
-            <View style={styles.titleContainer}>
-              <Text style={[styles.screenTitle, { color: theme.text }]}>
-                {lang === 'ta' ? 'முன்னேற்றம்' : 'My Progress'}
-              </Text>
-            </View>
+            <Text style={styles.screenTitle}>
+              {lang === 'ta' ? 'எனது முன்னேற்றம்' : 'My Progress'}
+            </Text>
 
-            <View style={[styles.langBadge, { backgroundColor: theme.backgroundElement }]}>
-              <Text style={styles.langBadgeText}>
-                {lang === 'ta' ? 'தமிழ் 🇮🇳' : 'English 🇬🇧'}
-              </Text>
-            </View>
+            <LanguageChip lang={lang} />
           </View>
 
-          {/* Level & XP Hero Banner */}
+          {/* Hero Level Banner */}
           <View style={styles.levelBanner}>
             <View style={styles.levelHeaderRow}>
               <View style={styles.levelBadge}>
@@ -101,7 +85,6 @@ export default function ProgressScreen() {
               </Text>
             </View>
 
-            {/* Level XP Progress Bar */}
             <View style={styles.levelProgressContainer}>
               <View style={styles.levelProgressLabelRow}>
                 <Text style={styles.levelProgressLabel}>
@@ -130,30 +113,30 @@ export default function ProgressScreen() {
             </View>
           </View>
 
-          {/* Streaks Stats Grid */}
+          {/* Streaks Stats */}
           <View style={styles.statsGrid}>
-            <View style={[styles.statCard, { backgroundColor: theme.backgroundElement }]}>
+            <LearnlyCard style={styles.statCard}>
               <Text style={styles.statEmoji}>🔥</Text>
-              <Text style={[styles.statValue, { color: theme.text }]}>
+              <Text style={styles.statValue}>
                 {progressState.currentStreak} {lang === 'ta' ? 'நாட்கள்' : 'Days'}
               </Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+              <Text style={styles.statLabel}>
                 {lang === 'ta' ? 'தற்போதைய தொடர்' : 'Current Streak'}
               </Text>
-            </View>
+            </LearnlyCard>
 
-            <View style={[styles.statCard, { backgroundColor: theme.backgroundElement }]}>
+            <LearnlyCard style={styles.statCard}>
               <Text style={styles.statEmoji}>🏆</Text>
-              <Text style={[styles.statValue, { color: theme.text }]}>
+              <Text style={styles.statValue}>
                 {progressState.longestStreak} {lang === 'ta' ? 'நாட்கள்' : 'Days'}
               </Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+              <Text style={styles.statLabel}>
                 {lang === 'ta' ? 'மிக நீண்ட தொடர்' : 'Best Streak'}
               </Text>
-            </View>
+            </LearnlyCard>
           </View>
 
-          {/* Weak Skill Recommendation Banner */}
+          {/* Encouraging Weak Skill Recommendation */}
           {progressState.weakSkill && (
             <View style={styles.weakSkillBox}>
               <Text style={styles.weakSkillTitle}>
@@ -170,122 +153,106 @@ export default function ProgressScreen() {
             </View>
           )}
 
-          {/* Performance Breakdown Section */}
-          <Text style={[styles.sectionHeading, { color: theme.text }]}>
+          {/* Skill Performance Breakdown */}
+          <Text style={styles.sectionHeading}>
             {lang === 'ta' ? 'திறன் விவரங்கள்' : 'Skill Performance'}
           </Text>
 
           <View style={styles.performanceGrid}>
-            {/* Reading Stats Card */}
-            <View style={[styles.skillCard, { backgroundColor: theme.backgroundElement }]}>
+            {/* Reading Stats */}
+            <LearnlyCard accentColor="#4F46E5" style={styles.skillCard}>
               <View style={styles.skillCardHeader}>
                 <Text style={styles.skillCardEmoji}>📖</Text>
                 <View>
-                  <Text style={[styles.skillCardTitle, { color: theme.text }]}>
+                  <Text style={styles.skillCardTitle}>
                     {lang === 'ta' ? 'வாசித்தல்' : 'Reading'}
                   </Text>
-                  <Text style={[styles.skillCardSubtitle, { color: theme.textSecondary }]}>
-                    {progressState.readingCompleted} {lang === 'ta' ? 'பயிற்சிகள் முடிந்தது' : 'Exercises done'}
+                  <Text style={styles.skillCardSubtitle}>
+                    {progressState.readingCompleted} {lang === 'ta' ? 'பயிற்சிகள்' : 'Exercises done'}
                   </Text>
                 </View>
               </View>
 
               <View style={styles.metricRow}>
-                <Text style={[styles.metricName, { color: theme.textSecondary }]}>
-                  {lang === 'ta' ? 'துல்லியம்:' : 'Accuracy:'}
-                </Text>
-                <Text style={[styles.metricVal, { color: theme.text }]}>
-                  {progressState.readingAccuracy}%
-                </Text>
+                <Text style={styles.metricName}>{lang === 'ta' ? 'துல்லியம்:' : 'Accuracy:'}</Text>
+                <Text style={styles.metricVal}>{progressState.readingAccuracy}%</Text>
               </View>
 
               <View style={styles.metricRow}>
-                <Text style={[styles.metricName, { color: theme.textSecondary }]}>
-                  {lang === 'ta' ? 'சரளம்:' : 'Fluency:'}
-                </Text>
-                <Text style={[styles.metricVal, { color: theme.text }]}>
-                  {progressState.readingFluency}%
-                </Text>
+                <Text style={styles.metricName}>{lang === 'ta' ? 'சரளம்:' : 'Fluency:'}</Text>
+                <Text style={styles.metricVal}>{progressState.readingFluency}%</Text>
               </View>
-            </View>
+            </LearnlyCard>
 
-            {/* Writing Stats Card */}
-            <View style={[styles.skillCard, { backgroundColor: theme.backgroundElement }]}>
+            {/* Writing Stats */}
+            <LearnlyCard accentColor="#8B5CF6" style={styles.skillCard}>
               <View style={styles.skillCardHeader}>
                 <Text style={styles.skillCardEmoji}>✍️</Text>
                 <View>
-                  <Text style={[styles.skillCardTitle, { color: theme.text }]}>
+                  <Text style={styles.skillCardTitle}>
                     {lang === 'ta' ? 'எழுதுதல்' : 'Writing'}
                   </Text>
-                  <Text style={[styles.skillCardSubtitle, { color: theme.textSecondary }]}>
-                    {progressState.writingCompleted} {lang === 'ta' ? 'பயிற்சிகள் முடிந்தது' : 'Exercises done'}
+                  <Text style={styles.skillCardSubtitle}>
+                    {progressState.writingCompleted} {lang === 'ta' ? 'பயிற்சிகள்' : 'Exercises done'}
                   </Text>
                 </View>
               </View>
 
               <View style={styles.metricRow}>
-                <Text style={[styles.metricName, { color: theme.textSecondary }]}>
-                  {lang === 'ta' ? 'எழுத்துக்கூட்டு:' : 'Spelling:'}
-                </Text>
-                <Text style={[styles.metricVal, { color: theme.text }]}>
-                  {progressState.writingSpelling}%
-                </Text>
+                <Text style={styles.metricName}>{lang === 'ta' ? 'எழுத்துக்கூட்டு:' : 'Spelling:'}</Text>
+                <Text style={styles.metricVal}>{progressState.writingSpelling}%</Text>
               </View>
 
               <View style={styles.metricRow}>
-                <Text style={[styles.metricName, { color: theme.textSecondary }]}>
-                  {lang === 'ta' ? 'வாக்கியம்:' : 'Sentence:'}
-                </Text>
-                <Text style={[styles.metricVal, { color: theme.text }]}>
-                  {progressState.writingSentence}%
-                </Text>
+                <Text style={styles.metricName}>{lang === 'ta' ? 'வாக்கியம்:' : 'Sentence:'}</Text>
+                <Text style={styles.metricVal}>{progressState.writingSentence}%</Text>
               </View>
-            </View>
+            </LearnlyCard>
           </View>
 
-          {/* Badges / Achievements Section */}
-          <Text style={[styles.sectionHeading, { color: theme.text }]}>
+          {/* Badges / Achievements */}
+          <Text style={styles.sectionHeading}>
             {lang === 'ta' ? 'விருதுகள்' : 'Badges & Achievements'}
           </Text>
 
           <View style={styles.badgesList}>
             {badgesList.map((badge) => (
-              <View
+              <LearnlyCard
                 key={badge.id}
                 style={[
                   styles.badgeCard,
-                  { backgroundColor: theme.backgroundElement },
-                  !badge.unlocked && styles.badgeLocked,
+                  badge.unlocked ? null : styles.badgeLocked,
                 ]}
               >
-                <Text style={styles.badgeEmoji}>
-                  {badge.unlocked ? badge.emoji : '🔒'}
-                </Text>
-
-                <View style={styles.badgeInfo}>
-                  <Text
-                    style={[
-                      styles.badgeName,
-                      { color: badge.unlocked ? theme.text : theme.textSecondary },
-                    ]}
-                  >
-                    {badge.name}
+                <View style={styles.badgeRow}>
+                  <Text style={styles.badgeEmoji}>
+                    {badge.unlocked ? badge.emoji : '🔒'}
                   </Text>
-                  <Text style={[styles.badgeDesc, { color: theme.textSecondary }]}>
-                    {badge.description}
-                  </Text>
-                </View>
 
-                {badge.unlocked && (
-                  <View style={styles.unlockedTag}>
-                    <Text style={styles.unlockedTagText}>✓ Unlocked</Text>
+                  <View style={styles.badgeInfo}>
+                    <Text
+                      style={[
+                        styles.badgeName,
+                        !badge.unlocked && { color: '#64748B' },
+                      ]}
+                    >
+                      {badge.name}
+                    </Text>
+                    <Text style={styles.badgeDesc}>{badge.description}</Text>
                   </View>
-                )}
-              </View>
+
+                  {badge.unlocked && (
+                    <View style={styles.unlockedTag}>
+                      <Text style={styles.unlockedTagText}>✓ Unlocked</Text>
+                    </View>
+                  )}
+                </View>
+              </LearnlyCard>
             ))}
           </View>
         </View>
       </ScrollView>
+      <BottomNavigation activeTab="progress" lang={lang} />
     </SafeAreaView>
   );
 }
@@ -297,7 +264,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.five,
+    paddingBottom: 110,
     alignItems: 'center',
   },
   container: {
@@ -311,55 +278,49 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.four,
   },
   backButton: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
   },
   backButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#334155',
   },
-  titleContainer: {
-    alignItems: 'center',
+  pressed: {
+    opacity: 0.7,
   },
   screenTitle: {
     fontSize: 18,
     fontWeight: '800',
-  },
-  langBadge: {
-    paddingHorizontal: Spacing.two + 4,
-    paddingVertical: Spacing.one + 2,
-    borderRadius: 12,
-  },
-  langBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
+    color: '#0F172A',
   },
   levelBanner: {
-    backgroundColor: '#4C6EF5',
-    padding: Spacing.four,
-    borderRadius: 20,
-    marginBottom: Spacing.four,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    backgroundColor: '#4F46E5',
+    padding: 22,
+    borderRadius: 24,
+    marginBottom: 20,
+    shadowColor: '#4338CA',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
   },
   levelHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: Spacing.three,
+    marginBottom: 16,
   },
   levelBadge: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one + 2,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: 12,
   },
   levelBadgeText: {
-    color: '#4C6EF5',
+    color: '#4F46E5',
     fontSize: 16,
     fontWeight: '800',
   },
@@ -374,17 +335,17 @@ const styles = StyleSheet.create({
   levelProgressLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: Spacing.one,
+    marginBottom: 6,
   },
   levelProgressLabel: {
     color: '#E0E7FF',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   levelProgressXP: {
     color: '#FFFFFF',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   progressBarTrack: {
     height: 12,
@@ -395,51 +356,47 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#34A853',
+    backgroundColor: '#10B981',
     borderRadius: 6,
   },
   statsGrid: {
     flexDirection: 'row',
-    gap: Spacing.three,
-    marginBottom: Spacing.four,
+    gap: 14,
+    marginBottom: 20,
   },
   statCard: {
     flex: 1,
-    padding: Spacing.four,
-    borderRadius: 18,
+    padding: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
   },
   statEmoji: {
     fontSize: 32,
-    marginBottom: Spacing.one,
+    marginBottom: 4,
   },
   statValue: {
     fontSize: 20,
     fontWeight: '800',
+    color: '#0F172A',
     marginBottom: 2,
   },
   statLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#64748B',
   },
   weakSkillBox: {
     backgroundColor: '#FEF3C7',
-    padding: Spacing.four,
-    borderRadius: 16,
-    marginBottom: Spacing.four,
+    padding: 18,
+    borderRadius: 18,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: '#F59E0B',
   },
   weakSkillTitle: {
     color: '#92400E',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 2,
   },
   weakSkillName: {
@@ -451,30 +408,28 @@ const styles = StyleSheet.create({
   weakSkillSubtext: {
     color: '#78350F',
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   sectionHeading: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
-    marginBottom: Spacing.three,
+    color: '#0F172A',
+    marginBottom: 14,
   },
   performanceGrid: {
     flexDirection: 'row',
-    gap: Spacing.three,
-    marginBottom: Spacing.five,
+    gap: 14,
+    marginBottom: 24,
   },
   skillCard: {
     flex: 1,
-    padding: Spacing.three + 2,
-    borderRadius: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4C6EF5',
+    padding: 16,
   },
   skillCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
-    marginBottom: Spacing.three,
+    gap: 10,
+    marginBottom: 14,
   },
   skillCardEmoji: {
     fontSize: 24,
@@ -482,36 +437,41 @@ const styles = StyleSheet.create({
   skillCardTitle: {
     fontSize: 15,
     fontWeight: '800',
+    color: '#0F172A',
   },
   skillCardSubtitle: {
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#64748B',
   },
   metricRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: Spacing.one,
+    marginBottom: 6,
   },
   metricName: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#64748B',
   },
   metricVal: {
     fontSize: 13,
     fontWeight: '800',
+    color: '#0F172A',
   },
   badgesList: {
-    gap: Spacing.three,
+    gap: 12,
   },
   badgeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.three + 2,
-    borderRadius: 16,
-    gap: Spacing.three,
+    padding: 16,
   },
   badgeLocked: {
     opacity: 0.6,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   badgeEmoji: {
     fontSize: 32,
@@ -522,24 +482,22 @@ const styles = StyleSheet.create({
   badgeName: {
     fontSize: 16,
     fontWeight: '800',
+    color: '#0F172A',
     marginBottom: 2,
   },
   badgeDesc: {
     fontSize: 13,
-    fontWeight: '500',
+    color: '#64748B',
   },
   unlockedTag: {
-    backgroundColor: '#E6F4EA',
-    paddingHorizontal: Spacing.two + 2,
-    paddingVertical: Spacing.one,
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 8,
   },
   unlockedTagText: {
-    color: '#137333',
+    color: '#059669',
     fontSize: 12,
-    fontWeight: '700',
-  },
-  buttonPressed: {
-    opacity: 0.7,
+    fontWeight: '800',
   },
 });

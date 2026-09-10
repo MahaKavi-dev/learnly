@@ -11,22 +11,21 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { DEMO_CHILD_ID } from '@/config/learner';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { LanguageChip } from '@/components/ui/Chips';
+import { LearnlyButton } from '@/components/ui/LearnlyButton';
+import { LearnlyCard } from '@/components/ui/LearnlyCard';
+import { getCurrentChildId } from '@/config/learner';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { WRITING_EXERCISES } from '@/data/exercises';
-import { useTheme } from '@/hooks/use-theme';
 import { fetchBackendExercises } from '@/services/api';
 import { recordExerciseCompletion } from '@/services/gamification';
-import { RewardResult } from '@/types/gamification';
 import { Language, WritingExercise } from '@/types/exercise';
+import { RewardResult } from '@/types/gamification';
 import { evaluateWritingAnswer, WritingEvaluation } from '@/utils/evaluation';
 
 export default function WritingScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ lang?: string }>();
-
-  // Determine current language from route param (defaults to English)
   const lang: Language = params.lang === 'ta' ? 'ta' : 'en';
 
   const defaultLocalList: WritingExercise[] = WRITING_EXERCISES[lang];
@@ -40,9 +39,15 @@ export default function WritingScreen() {
   const [earnedReward, setEarnedReward] = useState<RewardResult | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
 
-  // Fetch writing exercises from backend on mount or language change
   useEffect(() => {
     let isMounted = true;
+    setCurrentIndex(0);
+    setUserAnswer('');
+    setSubmittedAnswer(null);
+    setEvaluationResult(null);
+    setEarnedReward(null);
+    setIsCompleted(false);
+
     async function loadWritingExercises() {
       setIsLoading(true);
       try {
@@ -55,7 +60,7 @@ export default function WritingScreen() {
         } else if (isMounted) {
           setExerciseList(defaultLocalList);
         }
-      } catch (err) {
+      } catch {
         if (isMounted) {
           setExerciseList(defaultLocalList);
         }
@@ -72,28 +77,30 @@ export default function WritingScreen() {
   }, [lang]);
 
   const totalQuestions = exerciseList.length;
-  const currentExercise: WritingExercise = exerciseList[currentIndex] || defaultLocalList[0];
-  const progressPercent = ((currentIndex + 1) / totalQuestions) * 100;
+  const currentExercise: WritingExercise | undefined =
+    exerciseList[currentIndex] || defaultLocalList[0];
+  const expectedAnswer =
+    currentExercise?.expectedAnswer || currentExercise?.expected_answer || '';
+  const progressPercent =
+    totalQuestions > 0 ? ((currentIndex + 1) / totalQuestions) * 100 : 0;
 
-  /**
-   * submitWritingAnswer(answer)
-   * Evaluates user's answer locally, calculates XP/streaks/badges, and prevents duplicate submissions.
-   */
   const submitWritingAnswer = (answer: string) => {
-    // Duplicate submit protection: ignore if answer is empty or already submitted
-    if (!answer.trim() || submittedAnswer !== null) return;
+    if (!answer.trim() || submittedAnswer !== null || !currentExercise || !expectedAnswer) return;
 
-    // Evaluate answer with normalization and similarity scoring
-    const result = evaluateWritingAnswer(answer, currentExercise.expectedAnswer || currentExercise.prompt, lang);
+    const result = evaluateWritingAnswer(answer, expectedAnswer, lang);
 
-    // Record exercise completion for XP, level, streak, and badges
-    const reward = recordExerciseCompletion({
-      type: 'writing',
-      difficulty: currentExercise.difficulty,
-      score: result.score,
-      childId: DEMO_CHILD_ID,
-      evaluation: result,
-    });
+    let reward: RewardResult | null = null;
+    try {
+      reward = recordExerciseCompletion({
+        type: 'writing',
+        difficulty: currentExercise.difficulty,
+        score: result.score,
+        childId: getCurrentChildId(),
+        evaluation: result,
+      });
+    } catch {
+      reward = null;
+    }
 
     setSubmittedAnswer(answer.trim());
     setEvaluationResult(result);
@@ -123,53 +130,54 @@ export default function WritingScreen() {
   };
 
   return (
-    <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: theme.background }]}
-      edges={['top', 'left', 'right']}
-    >
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F8FAFC' }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Top Header Bar */}
+          {/* Top Bar */}
           <View style={styles.topBar}>
             <Pressable
-              style={({ pressed }) => [
-                styles.backButton,
-                { backgroundColor: theme.backgroundElement },
-                pressed && styles.buttonPressed,
-              ]}
+              style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
               onPress={() => router.back()}
-              accessibilityRole="button"
-              accessibilityLabel="Back to Home"
             >
-              <Text style={[styles.backButtonText, { color: theme.text }]}>← Back</Text>
+              <Text style={styles.backButtonText}>← Back</Text>
             </Pressable>
 
-            <View style={styles.titleContainer}>
-              <Text style={[styles.screenTitle, { color: theme.text }]}>
-                Writing Practice
-              </Text>
-            </View>
+            <Text style={styles.screenTitle}>
+              {lang === 'ta' ? 'எழுதுதல் பயிற்சி' : 'Writing Practice'}
+            </Text>
 
-            <View style={[styles.langBadge, { backgroundColor: theme.backgroundElement }]}>
-              <Text style={styles.langBadgeText}>
-                {lang === 'ta' ? 'தமிழ் 🇮🇳' : 'English 🇬🇧'}
-              </Text>
-            </View>
+            <LanguageChip lang={lang} />
           </View>
 
           {isLoading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator color="#4C6EF5" size="large" />
-              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
+              <ActivityIndicator color="#8B5CF6" size="large" />
+              <Text style={styles.loadingText}>
                 {lang === 'ta' ? 'எழுத்துப் பயிற்சிகள் ஏற்றப்படுகின்றன...' : 'Loading writing exercises...'}
               </Text>
             </View>
+          ) : totalQuestions === 0 || !currentExercise ? (
+            <LearnlyCard style={styles.completionCard}>
+              <Text style={styles.completionTitle}>
+                {lang === 'ta' ? 'பயிற்சிகள் இல்லை' : 'No exercises available'}
+              </Text>
+              <Text style={styles.completionSubtitle}>
+                {lang === 'ta'
+                  ? 'எழுத்துப் பயிற்சிகளை ஏற்ற முடியவில்லை. முகப்புக்குத் திரும்பி மீண்டும் முயற்சிக்கவும்.'
+                  : 'Writing exercises could not be loaded. Go back home and try again.'}
+              </Text>
+              <LearnlyButton
+                label={lang === 'ta' ? 'முகப்புக்குச் செல்க' : 'Back to Home'}
+                onPress={() => router.replace({ pathname: '/', params: { lang } })}
+                variant="outline"
+              />
+            </LearnlyCard>
           ) : isCompleted ? (
-            /* --- COMPLETION VIEW --- */
-            <View style={[styles.completionCard, { backgroundColor: '#4C6EF5' }]}>
+            /* --- SCREEN 7: WRITING COMPLETION VIEW --- */
+            <LearnlyCard style={styles.completionCard}>
               <Text style={styles.completionEmoji}>🎉</Text>
               <Text style={styles.completionTitle}>
                 {lang === 'ta' ? 'அற்புதம்!' : 'Awesome Job!'}
@@ -180,89 +188,68 @@ export default function WritingScreen() {
                   : 'You completed all writing practice exercises!'}
               </Text>
 
-              <View style={styles.completionActions}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    styles.whiteButton,
-                    pressed && styles.buttonPressed,
-                  ]}
+              <View style={{ width: '100%', gap: 12 }}>
+                <LearnlyButton
+                  label={lang === 'ta' ? 'மீண்டும் தொடங்குக' : 'Practice Again'}
                   onPress={handleRestart}
-                >
-                  <Text style={styles.primaryButtonTextDark}>
-                    {lang === 'ta' ? 'மீண்டும் தொடங்குக' : 'Practice Again'}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.secondaryOutlineButton,
-                    pressed && styles.buttonPressed,
-                  ]}
-                  onPress={() => router.back()}
-                >
-                  <Text style={styles.secondaryOutlineText}>
-                    {lang === 'ta' ? 'முகப்புக்குச் செல்க' : 'Back to Home'}
-                  </Text>
-                </Pressable>
+                  variant="secondary"
+                />
+                <LearnlyButton
+                  label={lang === 'ta' ? 'முகப்புக்குச் செல்க' : 'Back to Home'}
+                  onPress={() => router.replace({ pathname: '/', params: { lang } })}
+                  variant="outline"
+                />
               </View>
-            </View>
+            </LearnlyCard>
           ) : (
-            /* --- MAIN EXERCISE FLOW --- */
+            /* --- SCREEN 6: MAIN WRITING EXERCISE FLOW --- */
             <View style={styles.exerciseSection}>
-              {/* Progress Indicator */}
+              {/* Progress Indicator Bar */}
               <View style={styles.progressHeader}>
-                <Text style={[styles.progressText, { color: theme.textSecondary }]}>
+                <Text style={styles.progressText}>
                   {lang === 'ta'
                     ? `கேள்வி ${currentExercise.questionNumber || currentIndex + 1} / ${totalQuestions}`
                     : `Question ${currentExercise.questionNumber || currentIndex + 1} of ${totalQuestions}`}
                 </Text>
-                <View style={[styles.progressBarTrack, { backgroundColor: theme.backgroundElement }]}>
-                  <View
-                    style={[
-                      styles.progressBarFill,
-                      { width: `${progressPercent}%`, backgroundColor: '#4C6EF5' },
-                    ]}
-                  />
+                <View style={styles.progressBarTrack}>
+                  <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
                 </View>
               </View>
 
-              {/* Instruction Label */}
-              <Text style={[styles.instructionText, { color: theme.textSecondary }]}>
+              {/* Instruction */}
+              <Text style={styles.instructionText}>
                 {lang === 'ta'
                   ? 'பயிற்சியை படித்து பதிலை எழுதவும்:'
                   : 'Read the prompt and write your answer:'}
               </Text>
 
-              {/* Large Exercise Prompt Card */}
-              <View style={[styles.promptCard, { backgroundColor: theme.backgroundElement }]}>
-                <Text style={[styles.promptText, { color: theme.text }]}>
+              {/* Prompt Card */}
+              <LearnlyCard accentColor="#8B5CF6" style={styles.promptCard}>
+                <Text style={styles.promptText}>
                   {currentExercise.prompt || currentExercise.content}
                 </Text>
-              </View>
+              </LearnlyCard>
 
-              {/* Text Input Field */}
+              {/* Text Input Area */}
               <View style={styles.inputSection}>
-                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                <Text style={styles.inputLabel}>
                   {lang === 'ta' ? 'உங்கள் பதில்:' : 'Your Answer:'}
                 </Text>
                 <TextInput
                   style={[
                     styles.textInput,
                     {
-                      backgroundColor: theme.backgroundElement,
-                      color: theme.text,
                       borderColor: submittedAnswer
                         ? evaluationResult?.correct
-                          ? '#34A853'
-                          : '#EA4335'
-                        : '#C7D2FE',
+                          ? '#10B981'
+                          : '#F43F5E'
+                        : '#CBD5E1',
                     },
                   ]}
                   placeholder={
                     lang === 'ta' ? 'இங்கே எழுதவும்...' : 'Type your answer here...'
                   }
-                  placeholderTextColor={theme.textSecondary}
+                  placeholderTextColor="#94A3B8"
                   value={userAnswer}
                   onChangeText={setUserAnswer}
                   editable={!submittedAnswer}
@@ -271,45 +258,35 @@ export default function WritingScreen() {
                 />
               </View>
 
-              {/* Submitted Answer Display & Result Evaluation Card */}
+              {/* --- SCREEN 7: WRITING RESULT EVALUATION CARD --- */}
               {submittedAnswer && evaluationResult && (
-                <View
-                  style={[
-                    styles.resultCard,
-                    evaluationResult.correct
-                      ? styles.resultCardCorrect
-                      : styles.resultCardIncorrect,
-                  ]}
+                <LearnlyCard
+                  accentColor={evaluationResult.correct ? '#10B981' : '#F43F5E'}
+                  style={styles.resultCard}
                 >
                   <View style={styles.resultHeaderRow}>
                     <Text
                       style={[
                         styles.resultStatusTitle,
-                        evaluationResult.correct
-                          ? styles.textSuccess
-                          : styles.textError,
+                        { color: evaluationResult.correct ? '#059669' : '#E11D48' },
                       ]}
                     >
                       {evaluationResult.correct
-                        ? 'Correct! 🎉'
+                        ? 'Great job! 🎉'
                         : lang === 'ta'
-                        ? '✗ மீண்டும் முயற்சிக்கவும்'
-                        : '✗ Try again'}
+                        ? "அடுத்து முயற்சி செய்வோம்! 💪"
+                        : "Let's try again! 💪"}
                     </Text>
                     <View
                       style={[
                         styles.scoreBadge,
-                        evaluationResult.correct
-                          ? styles.scoreBadgeSuccess
-                          : styles.scoreBadgeError,
+                        { backgroundColor: evaluationResult.correct ? '#D1FAE5' : '#FFE4E6' },
                       ]}
                     >
                       <Text
                         style={[
                           styles.scoreText,
-                          evaluationResult.correct
-                            ? styles.textSuccess
-                            : styles.textError,
+                          { color: evaluationResult.correct ? '#059669' : '#E11D48' },
                         ]}
                       >
                         Score: {evaluationResult.score}/100
@@ -317,20 +294,20 @@ export default function WritingScreen() {
                     </View>
                   </View>
 
-                  <Text style={[styles.submittedLabel, { color: theme.textSecondary }]}>
+                  <Text style={styles.submittedLabel}>
                     {lang === 'ta' ? 'உங்கள் பதில்:' : 'Your Answer:'}
                   </Text>
-                  <Text style={[styles.submittedText, { color: theme.text, marginBottom: 8 }]}>
+                  <Text style={styles.submittedText}>
                     "{submittedAnswer}"
                   </Text>
 
                   {!evaluationResult.correct && (
                     <>
-                      <Text style={[styles.submittedLabel, { color: theme.textSecondary }]}>
+                      <Text style={[styles.submittedLabel, { marginTop: 10 }]}>
                         {lang === 'ta' ? 'சரியான பதில்:' : 'Correct Answer:'}
                       </Text>
-                      <Text style={[styles.submittedText, { color: '#137333', marginBottom: 8 }]}>
-                        "{currentExercise.expectedAnswer || currentExercise.prompt}"
+                      <Text style={[styles.submittedText, { color: '#059669' }]}>
+                        "{expectedAnswer}"
                       </Text>
                     </>
                   )}
@@ -342,33 +319,15 @@ export default function WritingScreen() {
                       </Text>
                     </View>
                   )}
-                </View>
+
+                  {/* Feedback Message */}
+                  <View style={styles.feedbackBox}>
+                    <Text style={styles.feedbackText}>{evaluationResult.feedback}</Text>
+                  </View>
+                </LearnlyCard>
               )}
 
-              {/* Dynamic Feedback Banner */}
-              {submittedAnswer && evaluationResult && (
-                <View
-                  style={[
-                    styles.feedbackBanner,
-                    evaluationResult.correct
-                      ? styles.feedbackBannerSuccess
-                      : styles.feedbackBannerWarning,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.feedbackText,
-                      evaluationResult.correct
-                        ? styles.feedbackTextSuccess
-                        : styles.feedbackTextWarning,
-                    ]}
-                  >
-                    {evaluationResult.feedback}
-                  </Text>
-                </View>
-              )}
-
-              {/* XP & Reward Feedback Banner */}
+              {/* XP Reward Notification */}
               {earnedReward && earnedReward.xpEarned > 0 && (
                 <View style={styles.rewardBox}>
                   <Text style={styles.rewardText}>
@@ -389,39 +348,24 @@ export default function WritingScreen() {
 
               {/* Submit / Next Button */}
               {!submittedAnswer ? (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    !userAnswer.trim() && styles.buttonDisabled,
-                    pressed && styles.buttonPressed,
-                  ]}
+                <LearnlyButton
+                  label={lang === 'ta' ? 'பதிலைச் சமர்ப்பி' : 'Submit Answer'}
                   onPress={() => submitWritingAnswer(userAnswer)}
+                  variant="secondary"
                   disabled={!userAnswer.trim()}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.primaryButtonText}>
-                    {lang === 'ta' ? 'பதிலைச் சமர்ப்பி' : 'Submit Answer'}
-                  </Text>
-                </Pressable>
+                  style={{ marginTop: 16 }}
+                />
               ) : (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    pressed && styles.buttonPressed,
-                  ]}
+                <LearnlyButton
+                  label={
+                    currentIndex === totalQuestions - 1
+                      ? (lang === 'ta' ? 'முடிக்கவும் 🎉' : 'Finish Session 🎉')
+                      : (lang === 'ta' ? 'அடுத்த கேள்வி ➔' : 'Next Exercise ➔')
+                  }
                   onPress={handleNext}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.primaryButtonText}>
-                    {currentIndex === totalQuestions - 1
-                      ? lang === 'ta'
-                        ? 'முடிக்கவும்'
-                        : 'Finish'
-                      : lang === 'ta'
-                      ? 'அடுத்த கேள்வி ➔'
-                      : 'Next ➔'}
-                  </Text>
-                </Pressable>
+                  variant="secondary"
+                  style={{ marginTop: 16 }}
+                />
               )}
             </View>
           )}
@@ -438,7 +382,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.five,
+    paddingBottom: Spacing.five,
     alignItems: 'center',
   },
   container: {
@@ -452,283 +396,201 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.four,
   },
   backButton: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
   },
   backButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#334155',
   },
-  titleContainer: {
-    alignItems: 'center',
+  pressed: {
+    opacity: 0.7,
   },
   screenTitle: {
     fontSize: 18,
     fontWeight: '800',
-  },
-  langBadge: {
-    paddingHorizontal: Spacing.two + 4,
-    paddingVertical: Spacing.one + 2,
-    borderRadius: 12,
-  },
-  langBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
+    color: '#0F172A',
   },
   loadingContainer: {
-    paddingVertical: Spacing.five * 2,
+    paddingVertical: 80,
     alignItems: 'center',
-    gap: Spacing.three,
+    gap: 12,
   },
   loadingText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#64748B',
   },
   exerciseSection: {
     width: '100%',
   },
   progressHeader: {
-    marginBottom: Spacing.four,
+    marginBottom: 20,
   },
   progressText: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: Spacing.one,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 6,
   },
   progressBarTrack: {
     height: 10,
     borderRadius: 5,
+    backgroundColor: '#E2E8F0',
     overflow: 'hidden',
     width: '100%',
   },
   progressBarFill: {
     height: '100%',
     borderRadius: 5,
+    backgroundColor: '#8B5CF6',
   },
   instructionText: {
     fontSize: 15,
-    fontWeight: '600',
-    marginBottom: Spacing.two,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 10,
   },
   promptCard: {
-    padding: Spacing.five,
-    borderRadius: 20,
+    padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 120,
-    marginBottom: Spacing.four,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    marginBottom: 20,
   },
   promptText: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#0F172A',
     textAlign: 'center',
     lineHeight: 32,
   },
   inputSection: {
-    marginBottom: Spacing.four,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: Spacing.one,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 6,
   },
   textInput: {
     minHeight: 56,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 18,
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
+    backgroundColor: '#FFFFFF',
+    color: '#0F172A',
     borderWidth: 2,
   },
   resultCard: {
-    padding: Spacing.three + 2,
-    borderRadius: 16,
-    marginBottom: Spacing.four,
-    borderLeftWidth: 5,
-  },
-  resultCardCorrect: {
-    backgroundColor: '#E6F4EA',
-    borderLeftColor: '#34A853',
-  },
-  resultCardIncorrect: {
-    backgroundColor: '#FCE8E6',
-    borderLeftColor: '#EA4335',
+    padding: 20,
+    marginBottom: 16,
   },
   resultHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: Spacing.two,
+    marginBottom: 12,
   },
   resultStatusTitle: {
     fontSize: 18,
     fontWeight: '800',
   },
   scoreBadge: {
-    paddingHorizontal: Spacing.two + 2,
-    paddingVertical: Spacing.one,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
     borderRadius: 8,
-  },
-  scoreBadgeSuccess: {
-    backgroundColor: '#CEEAD6',
-  },
-  scoreBadgeError: {
-    backgroundColor: '#FAD2CF',
   },
   scoreText: {
     fontSize: 14,
     fontWeight: '800',
   },
-  textSuccess: {
-    color: '#137333',
-  },
-  textError: {
-    color: '#C5221F',
-  },
   submittedLabel: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
     marginBottom: 2,
   },
   submittedText: {
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#0F172A',
   },
   hintBox: {
     backgroundColor: '#FEF3C7',
-    padding: Spacing.three,
+    padding: 12,
     borderRadius: 12,
-    marginTop: 4,
+    marginTop: 10,
     borderWidth: 1,
     borderColor: '#F59E0B',
   },
   hintText: {
     color: '#92400E',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
-  feedbackBanner: {
-    padding: Spacing.three,
+  feedbackBox: {
+    backgroundColor: '#EDE9FE',
+    padding: 12,
     borderRadius: 12,
-    marginBottom: Spacing.five,
-    borderWidth: 1,
-  },
-  feedbackBannerSuccess: {
-    backgroundColor: '#E6F4EA',
-    borderColor: '#34A853',
-  },
-  feedbackBannerWarning: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
+    marginTop: 12,
   },
   feedbackText: {
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  feedbackTextSuccess: {
-    color: '#137333',
-  },
-  feedbackTextWarning: {
-    color: '#92400E',
-  },
-  primaryButton: {
-    backgroundColor: '#4C6EF5',
-    paddingVertical: Spacing.four,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
-  },
-  completionCard: {
-    padding: Spacing.five,
-    borderRadius: 24,
-    alignItems: 'center',
-    marginTop: Spacing.three,
-  },
-  completionEmoji: {
-    fontSize: 56,
-    marginBottom: Spacing.two,
-  },
-  completionTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: Spacing.two,
-  },
-  completionSubtitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#E0E7FF',
-    textAlign: 'center',
-    marginBottom: Spacing.five,
-    lineHeight: 24,
-  },
-  completionActions: {
-    width: '100%',
-    gap: Spacing.three,
-  },
-  whiteButton: {
-    backgroundColor: '#FFFFFF',
-  },
-  primaryButtonTextDark: {
-    color: '#4C6EF5',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  secondaryOutlineButton: {
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    paddingVertical: Spacing.three,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  secondaryOutlineText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: '#6D28D9',
+    fontSize: 14,
     fontWeight: '700',
   },
   rewardBox: {
-    backgroundColor: '#EEF2FF',
-    padding: Spacing.three,
-    borderRadius: 14,
-    marginBottom: Spacing.four,
+    backgroundColor: '#FEF3C7',
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#C7D2FE',
+    borderColor: '#F59E0B',
     alignItems: 'center',
     gap: 4,
   },
   rewardText: {
-    color: '#3730A3',
+    color: '#B45309',
     fontSize: 16,
     fontWeight: '800',
   },
   levelUpText: {
     color: '#059669',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   badgeRewardText: {
-    color: '#D97706',
+    color: '#6D28D9',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
+  },
+  completionCard: {
+    padding: 28,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  completionEmoji: {
+    fontSize: 60,
+    marginBottom: 12,
+  },
+  completionTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 8,
+  },
+  completionSubtitle: {
+    fontSize: 16,
+    color: '#475569',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
   },
 });
