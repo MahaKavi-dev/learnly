@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,7 @@ import { DEMO_CHILD_ID } from '@/config/learner';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { WRITING_EXERCISES } from '@/data/exercises';
 import { useTheme } from '@/hooks/use-theme';
+import { fetchBackendExercises } from '@/services/api';
 import { recordExerciseCompletion } from '@/services/gamification';
 import { RewardResult } from '@/types/gamification';
 import { Language, WritingExercise } from '@/types/exercise';
@@ -27,9 +29,10 @@ export default function WritingScreen() {
   // Determine current language from route param (defaults to English)
   const lang: Language = params.lang === 'ta' ? 'ta' : 'en';
 
-  const exerciseList: WritingExercise[] = WRITING_EXERCISES[lang];
-  const totalQuestions = exerciseList.length;
+  const defaultLocalList: WritingExercise[] = WRITING_EXERCISES[lang];
 
+  const [exerciseList, setExerciseList] = useState<WritingExercise[]>(defaultLocalList);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [submittedAnswer, setSubmittedAnswer] = useState<string | null>(null);
@@ -37,7 +40,39 @@ export default function WritingScreen() {
   const [earnedReward, setEarnedReward] = useState<RewardResult | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
 
-  const currentExercise: WritingExercise = exerciseList[currentIndex];
+  // Fetch writing exercises from backend on mount or language change
+  useEffect(() => {
+    let isMounted = true;
+    async function loadWritingExercises() {
+      setIsLoading(true);
+      try {
+        const fetched = await fetchBackendExercises({
+          language: lang,
+          type: 'writing',
+        });
+        if (isMounted && fetched.length > 0) {
+          setExerciseList(fetched as WritingExercise[]);
+        } else if (isMounted) {
+          setExerciseList(defaultLocalList);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setExerciseList(defaultLocalList);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+    loadWritingExercises();
+    return () => {
+      isMounted = false;
+    };
+  }, [lang]);
+
+  const totalQuestions = exerciseList.length;
+  const currentExercise: WritingExercise = exerciseList[currentIndex] || defaultLocalList[0];
   const progressPercent = ((currentIndex + 1) / totalQuestions) * 100;
 
   /**
@@ -49,7 +84,7 @@ export default function WritingScreen() {
     if (!answer.trim() || submittedAnswer !== null) return;
 
     // Evaluate answer with normalization and similarity scoring
-    const result = evaluateWritingAnswer(answer, currentExercise.expectedAnswer, lang);
+    const result = evaluateWritingAnswer(answer, currentExercise.expectedAnswer || currentExercise.prompt, lang);
 
     // Record exercise completion for XP, level, streak, and badges
     const reward = recordExerciseCompletion({
@@ -125,7 +160,14 @@ export default function WritingScreen() {
             </View>
           </View>
 
-          {isCompleted ? (
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color="#4C6EF5" size="large" />
+              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
+                {lang === 'ta' ? 'எழுத்துப் பயிற்சிகள் ஏற்றப்படுகின்றன...' : 'Loading writing exercises...'}
+              </Text>
+            </View>
+          ) : isCompleted ? (
             /* --- COMPLETION VIEW --- */
             <View style={[styles.completionCard, { backgroundColor: '#4C6EF5' }]}>
               <Text style={styles.completionEmoji}>🎉</Text>
@@ -172,8 +214,8 @@ export default function WritingScreen() {
               <View style={styles.progressHeader}>
                 <Text style={[styles.progressText, { color: theme.textSecondary }]}>
                   {lang === 'ta'
-                    ? `கேள்வி ${currentExercise.questionNumber} / ${totalQuestions}`
-                    : `Question ${currentExercise.questionNumber} of ${totalQuestions}`}
+                    ? `கேள்வி ${currentExercise.questionNumber || currentIndex + 1} / ${totalQuestions}`
+                    : `Question ${currentExercise.questionNumber || currentIndex + 1} of ${totalQuestions}`}
                 </Text>
                 <View style={[styles.progressBarTrack, { backgroundColor: theme.backgroundElement }]}>
                   <View
@@ -195,7 +237,7 @@ export default function WritingScreen() {
               {/* Large Exercise Prompt Card */}
               <View style={[styles.promptCard, { backgroundColor: theme.backgroundElement }]}>
                 <Text style={[styles.promptText, { color: theme.text }]}>
-                  {currentExercise.prompt}
+                  {currentExercise.prompt || currentExercise.content}
                 </Text>
               </View>
 
@@ -416,6 +458,15 @@ const styles = StyleSheet.create({
   langBadgeText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  loadingContainer: {
+    paddingVertical: Spacing.five * 2,
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  loadingText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   exerciseSection: {
     width: '100%',

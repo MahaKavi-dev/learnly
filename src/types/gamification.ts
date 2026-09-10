@@ -28,11 +28,13 @@ export interface UserProgressState {
 
 export interface ExerciseResultPayload {
   type: 'reading' | 'writing';
-  difficulty?: string; // 'easy' | 'medium' | 'hard' | '1' | '2' | '3'
+  difficulty?: string | number; // 'easy' | 'medium' | 'hard' | 1 | 2 | 3
   score: number; // 0 to 100
   accuracy?: number;
   fluency?: number;
   skill?: string;
+  childId?: string;
+  evaluation?: any;
 }
 
 export interface RewardResult {

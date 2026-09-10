@@ -3,7 +3,10 @@ import { fetch } from 'expo/fetch';
 
 import { API_BASE_URL } from '@/config/api';
 import { DEMO_CHILD_ID } from '@/config/learner';
+import { READING_EXERCISES, WRITING_EXERCISES } from '@/data/exercises';
 import { AssessmentRequest, AssessmentResponse } from '@/types/assessment';
+import { ExerciseItem } from '@/types/exercise';
+
 
 /**
  * Sends a reading or writing exercise assessment payload to the FastAPI backend.
@@ -110,3 +113,74 @@ export async function transcribeAudio(audioUri: string, language: string): Promi
     throw error;
   }
 }
+
+export interface FetchExercisesParams {
+  language: 'en' | 'ta';
+  type: 'reading' | 'writing';
+  difficulty?: 'easy' | 'medium' | 'hard' | 1 | 2 | 3;
+  skill?: string;
+}
+
+/**
+ * Fetches exercise list from backend API endpoint: GET /api/exercises
+ * Query params: language, type, difficulty, skill
+ * Falls back gracefully to local dataset if network request fails.
+ */
+export async function fetchBackendExercises(params: FetchExercisesParams): Promise<ExerciseItem[]> {
+  const queryParams = new URLSearchParams();
+  queryParams.append('language', params.language);
+  queryParams.append('type', params.type);
+  if (params.difficulty !== undefined) {
+    queryParams.append('difficulty', String(params.difficulty));
+  }
+  if (params.skill) {
+    queryParams.append('skill', params.skill);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+
+  try {
+    const url = `${API_BASE_URL}/api/exercises?${queryParams.toString()}`;
+    const response = await globalThis.fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data) && data.length > 0) {
+        return data.map((item: any, idx: number) => ({
+          ...item,
+          text: item.content || item.text || '',
+          prompt: item.content || item.prompt || '',
+          expectedAnswer: item.expected_answer || item.expectedAnswer || '',
+          questionNumber: idx + 1,
+        }));
+      }
+    }
+  } catch (error) {
+    clearTimeout(timeoutId);
+    console.warn('Backend GET /api/exercises fetch failed or timed out, falling back to local dataset:', error);
+  }
+
+  // Local fallback filtering
+  const localList: ExerciseItem[] = params.type === 'reading'
+    ? READING_EXERCISES[params.language]
+    : WRITING_EXERCISES[params.language];
+
+  const diffNum = params.difficulty === 'easy' ? 1
+    : params.difficulty === 'medium' ? 2
+    : params.difficulty === 'hard' ? 3
+    : typeof params.difficulty === 'number' ? params.difficulty
+    : undefined;
+
+  let filtered = localList;
+  if (diffNum !== undefined) {
+    filtered = filtered.filter((ex) => ex.difficulty === diffNum);
+  }
+  if (params.skill) {
+    filtered = filtered.filter((ex) => ex.skill === params.skill);
+  }
+
+  return filtered.length > 0 ? filtered : localList;
+}
+
