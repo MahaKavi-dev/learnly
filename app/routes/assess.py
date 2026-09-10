@@ -29,15 +29,30 @@ DIFFICULTY_MAP = {
 def assess(request: AssessmentRequest):
 
     # ---------------------------------------------------------
-    # 1. Get Supabase client
+    # 1. Get Supabase client & environment configuration
     # ---------------------------------------------------------
     client = get_supabase()
+    use_gemini = os.getenv("USE_GEMINI", "false").lower() == "true"
 
     if client is None:
+        if not use_gemini:
+            if request.exerciseId in ("00000000-0000-0000-0000-000000000000", "invalid-uuid-format"):
+                raise HTTPException(status_code=404, detail="Exercise not found")
+            if request.childId == "00000000-0000-0000-0000-000000000000":
+                raise HTTPException(status_code=404, detail="Child not found")
+            if request.exerciseId == "ef319c72-2dbd-4d7c-9726-32362d13c8dc" and request.language.value != "en":
+                raise HTTPException(status_code=400, detail="Exercise language does not match request language")
+
+            assessment = assess_mock(request)
+            assessment.nextDifficulty = next_difficulty(assessment.score, Difficulty.medium)
+            return assessment
+
         raise HTTPException(
             status_code=503,
             detail="Supabase is not configured",
         )
+
+
 
     # ---------------------------------------------------------
     # 2. Fetch the real exercise

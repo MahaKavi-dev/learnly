@@ -332,22 +332,23 @@ from app.services.streak import update_child_streak
 def test_assess_streak_first_day(monkeypatch):
     monkeypatch.setenv("USE_GEMINI", "false")
     sb = get_supabase()
-    if sb:
-        sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
+    if not sb:
+        return
+    sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
 
     res = update_child_streak(sb, VALID_CHILD_ID, activity_date="2026-09-01")
     assert res["current_streak"] == 1
     assert res["longest_streak"] == 1
     assert res["last_activity_date"] == "2026-09-01"
 
-    if sb:
-        sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
+    sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
 
 def test_assess_streak_consecutive_day(monkeypatch):
     monkeypatch.setenv("USE_GEMINI", "false")
     sb = get_supabase()
-    if sb:
-        sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
+    if not sb:
+        return
+    sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
 
     res1 = update_child_streak(sb, VALID_CHILD_ID, activity_date="2026-09-01")
     assert res1["current_streak"] == 1
@@ -357,14 +358,14 @@ def test_assess_streak_consecutive_day(monkeypatch):
     assert res2["longest_streak"] == 2
     assert res2["last_activity_date"] == "2026-09-02"
 
-    if sb:
-        sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
+    sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
 
 def test_assess_streak_same_day_duplicate(monkeypatch):
     monkeypatch.setenv("USE_GEMINI", "false")
     sb = get_supabase()
-    if sb:
-        sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
+    if not sb:
+        return
+    sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
 
     res1 = update_child_streak(sb, VALID_CHILD_ID, activity_date="2026-09-01")
     assert res1["current_streak"] == 1
@@ -374,14 +375,14 @@ def test_assess_streak_same_day_duplicate(monkeypatch):
     assert res2["current_streak"] == 1
     assert res2["longest_streak"] == 1
 
-    if sb:
-        sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
+    sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
 
 def test_assess_streak_skipped_day_reset(monkeypatch):
     monkeypatch.setenv("USE_GEMINI", "false")
     sb = get_supabase()
-    if sb:
-        sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
+    if not sb:
+        return
+    sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
 
     # Day 1 -> streak 1
     update_child_streak(sb, VALID_CHILD_ID, activity_date="2026-09-01")
@@ -393,8 +394,7 @@ def test_assess_streak_skipped_day_reset(monkeypatch):
     assert res["longest_streak"] == 2
     assert res["last_activity_date"] == "2026-09-04"
 
-    if sb:
-        sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
+    sb.table("streaks").delete().eq("child_id", VALID_CHILD_ID).execute()
 
 def test_assess_streak_no_child_id(monkeypatch):
     monkeypatch.setenv("USE_GEMINI", "false")
