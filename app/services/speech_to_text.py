@@ -4,14 +4,19 @@ import shutil
 import subprocess
 import tempfile
 import traceback
+<<<<<<< HEAD
 from typing import Optional
 
 from faster_whisper import WhisperModel
+=======
+import unicodedata
+>>>>>>> 888b1e8e9ad3b56b0bf7e47e08659a94a480e09c
 
 logger = logging.getLogger("learnly.stt")
 
 SUPPORTED_LANGUAGES = {"en-IN", "ta-IN", "en", "ta"}
 
+<<<<<<< HEAD
 # Global singleton for lazy loading the local Whisper model
 _whisper_model: Optional[WhisperModel] = None
 
@@ -24,6 +29,9 @@ def get_whisper_model() -> WhisperModel:
         logger.info("Local faster-whisper model initialized successfully.")
     return _whisper_model
 
+=======
+_whisper_model = None
+>>>>>>> 888b1e8e9ad3b56b0bf7e47e08659a94a480e09c
 
 def _get_ffmpeg_binary() -> str | None:
     # 1. System PATH
@@ -46,11 +54,26 @@ def _normalize_language(lang: str) -> str:
         return "en"
     if lang in ("ta", "ta-IN"):
         return "ta"
+<<<<<<< HEAD
     return "en"
 
 
 def _convert_audio_to_wav(audio_bytes: bytes, input_extension: str = ".m4a") -> str:
     """Converts audio bytes into a 16kHz WAV temporary file for Whisper processing."""
+=======
+    return lang
+
+def normalize_transcript_text(text: str, language: str = "en") -> str:
+    if not text:
+        return ""
+    # NFC normalization for Unicode characters (especially Tamil)
+    norm = unicodedata.normalize("NFC", text)
+    # Replace multiple whitespaces/newlines with single space
+    norm = " ".join(norm.split()).strip()
+    return norm
+
+def _convert_audio_to_wav(audio_bytes: bytes, input_extension: str = ".m4a") -> bytes:
+>>>>>>> 888b1e8e9ad3b56b0bf7e47e08659a94a480e09c
     ffmpeg_bin = _get_ffmpeg_binary()
     if not ffmpeg_bin:
         raise RuntimeError("Audio conversion requires ffmpeg, which is not available on the server.")
@@ -88,11 +111,29 @@ def _convert_audio_to_wav(audio_bytes: bytes, input_extension: str = ".m4a") -> 
                 pass
 
 
+def _get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        model_name = os.getenv("WHISPER_MODEL", "small")
+        device = os.getenv("WHISPER_DEVICE", "cpu")
+        compute_type = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+        logger.info(f"Loading local faster-whisper model '{model_name}' on device '{device}' with compute_type '{compute_type}'...")
+        try:
+            from faster_whisper import WhisperModel
+            _whisper_model = WhisperModel(model_name, device=device, compute_type=compute_type)
+            logger.info("Local faster-whisper model loaded successfully.")
+        except Exception as err:
+            logger.error(f"Failed to load local faster-whisper model '{model_name}': {err}")
+            traceback.print_exc()
+            raise RuntimeError(f"Failed to load local STT Whisper model: {err}")
+    return _whisper_model
+
 def transcribe_audio(file_bytes: bytes, filename: str, language: str) -> str:
     if not file_bytes or len(file_bytes) == 0:
         raise ValueError("Audio file is empty or missing.")
 
     whisper_lang = _normalize_language(language)
+<<<<<<< HEAD
     ext = os.path.splitext(filename.lower())[1] if filename else ".m4a"
 
     wav_path = _convert_audio_to_wav(file_bytes, input_extension=ext or ".m4a")
@@ -121,5 +162,58 @@ def transcribe_audio(file_bytes: bytes, filename: str, language: str) -> str:
         if wav_path and os.path.exists(wav_path):
             try:
                 os.remove(wav_path)
+=======
+    ext = os.path.splitext(filename.lower())[1] if filename else ""
+
+    # Convert non-wav audio (m4a, ogg, opus, mp3, 3gp, webm) to 16kHz mono WAV
+    needs_conversion = ext not in (".wav", ".wave")
+    if needs_conversion:
+        audio_bytes = _convert_audio_to_wav(file_bytes, input_extension=ext or ".m4a")
+    else:
+        audio_bytes = file_bytes
+
+    # Load local Whisper model
+    model = _get_whisper_model()
+
+    # Save to temp file for Whisper transcription
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_wav:
+        temp_wav.write(audio_bytes)
+        temp_wav_path = temp_wav.name
+
+    try:
+        segments, info = model.transcribe(
+            temp_wav_path,
+            language=whisper_lang,
+            beam_size=5,
+            temperature=0.0,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+            condition_on_previous_text=False
+        )
+        transcripts = []
+        for segment in segments:
+            # Filter noise / non-speech segments if stats present
+            no_speech_prob = getattr(segment, "no_speech_prob", 0.0)
+            avg_logprob = getattr(segment, "avg_logprob", 0.0)
+            if no_speech_prob > 0.6 or (avg_logprob < -1.5 and avg_logprob != 0.0):
+                logger.info(f"Skipping noise/hallucinated segment: text='{segment.text}', no_speech_prob={no_speech_prob}, avg_logprob={avg_logprob}")
+                continue
+            if segment.text and segment.text.strip():
+                transcripts.append(segment.text.strip())
+
+        raw_transcript = " ".join(transcripts).strip()
+        transcript = normalize_transcript_text(raw_transcript, whisper_lang)
+        if not transcript:
+            logger.info("Whisper STT returned empty transcript.")
+        return transcript
+    except Exception as err:
+        logger.error(f"Whisper STT transcription error: {err}")
+        traceback.print_exc()
+        raise RuntimeError(f"Whisper local transcription failed: {err}")
+    finally:
+        if os.path.exists(temp_wav_path):
+            try:
+                os.remove(temp_wav_path)
+>>>>>>> 888b1e8e9ad3b56b0bf7e47e08659a94a480e09c
             except Exception:
                 pass

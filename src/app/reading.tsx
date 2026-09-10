@@ -16,23 +16,21 @@ import {
 } from 'expo-audio';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { DEMO_CHILD_ID } from '@/config/learner';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { LanguageChip } from '@/components/ui/Chips';
+import { LearnlyButton } from '@/components/ui/LearnlyButton';
+import { LearnlyCard } from '@/components/ui/LearnlyCard';
+import { MicButtonState, MicrophoneButton } from '@/components/ui/MicrophoneButton';
+import { getCurrentChildId } from '@/config/learner';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { READING_EXERCISES } from '@/data/exercises';
-import { useTheme } from '@/hooks/use-theme';
 import { assessReading, fetchBackendExercises, transcribeAudio } from '@/services/api';
 import { recordExerciseCompletion } from '@/services/gamification';
 import { AssessmentResponse } from '@/types/assessment';
 import { ExerciseItem, Language, ReadingExercise } from '@/types/exercise';
 
-type MicState = 'IDLE' | 'REQUESTING' | 'READY' | 'LISTENING' | 'TRANSCRIBING' | 'DENIED';
-
 export default function ReadingScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ lang?: string }>();
-
-  // Determine current language from route param (defaults to English)
   const lang: Language = params.lang === 'ta' ? 'ta' : 'en';
 
   const defaultLocalList: ReadingExercise[] = READING_EXERCISES[lang];
@@ -46,7 +44,7 @@ export default function ReadingScreen() {
   const [currentExercise, setCurrentExercise] = useState<ReadingExercise>(defaultLocalList[0]);
   const [isLoadingNext, setIsLoadingNext] = useState(false);
 
-  const [micState, setMicState] = useState<MicState>('IDLE');
+  const [micState, setMicState] = useState<MicButtonState>('IDLE');
   const [userTranscript, setUserTranscript] = useState<string | null>(null);
   const [emptyTranscriptWarning, setEmptyTranscriptWarning] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -64,7 +62,6 @@ export default function ReadingScreen() {
     return 2;
   };
 
-  // Initial load of exercises from backend for selected language
   useEffect(() => {
     let isMounted = true;
     async function loadInitialExercise() {
@@ -93,10 +90,6 @@ export default function ReadingScreen() {
     };
   }, [lang]);
 
-  /**
-   * 1. startReading()
-   * Verifies microphone permission via expo-audio, prepares recorder, and starts audio recording.
-   */
   const startReading = async () => {
     try {
       setMicState('REQUESTING');
@@ -105,12 +98,10 @@ export default function ReadingScreen() {
       setAssessmentResult(null);
       setUserTranscript(null);
 
-      // Check existing recording permission
       const currentPerm = await getRecordingPermissionsAsync();
       let hasPermission = currentPerm.granted || currentPerm.status === 'granted';
 
       if (!hasPermission) {
-        // Request recording permission from device OS
         const requestResult = await requestRecordingPermissionsAsync();
         hasPermission = requestResult.granted || requestResult.status === 'granted';
       }
@@ -128,11 +119,6 @@ export default function ReadingScreen() {
     }
   };
 
-  /**
-   * 2. stopReading()
-   * Stops audio recorder, sends recording URI to STT server endpoint, updates transcript,
-   * AND IMMEDIATELY invokes assessReading without extra clicks.
-   */
   const stopReading = async () => {
     try {
       setMicState('TRANSCRIBING');
@@ -152,9 +138,7 @@ export default function ReadingScreen() {
         return;
       }
 
-      // Send audio URI + language code to backend Speech-to-Text endpoint
       const realTranscript = await transcribeAudio(uri, lang);
-
       setMicState('READY');
 
       if (!realTranscript || !realTranscript.trim()) {
@@ -167,8 +151,6 @@ export default function ReadingScreen() {
         const trimmed = realTranscript.trim();
         setUserTranscript(trimmed);
         setEmptyTranscriptWarning(null);
-
-        // Immediately trigger assessment!
         await submitAssessment(trimmed);
       }
     } catch (error: any) {
@@ -182,10 +164,6 @@ export default function ReadingScreen() {
     }
   };
 
-  /**
-   * 3. submitAssessment(transcript)
-   * Validates transcript and sends payload to POST /api/assess
-   */
   const submitAssessment = async (transcript: string | null) => {
     if (!transcript || !transcript.trim()) {
       setEmptyTranscriptWarning(
@@ -203,15 +181,14 @@ export default function ReadingScreen() {
     try {
       const result = await assessReading({
         exerciseId: currentExercise.id,
-        expectedText: currentExercise.text,
+        expectedText: currentExercise.text || currentExercise.content || '',
         userTranscript: transcript.trim(),
         language: currentExercise.language || lang,
-        childId: DEMO_CHILD_ID,
+        childId: getCurrentChildId(),
       });
 
       setAssessmentResult(result);
 
-      // Record reading exercise completion for XP, level, streak, and badges
       recordExerciseCompletion({
         type: 'reading',
         difficulty: currentExercise.difficulty,
@@ -219,7 +196,7 @@ export default function ReadingScreen() {
         accuracy: result.accuracy,
         fluency: result.fluency,
         skill: result.skill,
-        childId: DEMO_CHILD_ID,
+        childId: getCurrentChildId(),
       });
     } catch (error: any) {
       console.error('FastAPI assessment call error:', error);
@@ -233,9 +210,6 @@ export default function ReadingScreen() {
     }
   };
 
-  /**
-   * Advances to the next question or completes exercise, using server's nextDifficulty & weak skill
-   */
   const handleNextQuestion = async () => {
     setUserTranscript(null);
     setEmptyTranscriptWarning(null);
@@ -254,7 +228,6 @@ export default function ReadingScreen() {
     setIsLoadingNext(true);
 
     try {
-      // 1. Try backend fetch matching both nextDifficulty and weak skill
       let candidates: ExerciseItem[] = [];
       if (nextSkill) {
         candidates = await fetchBackendExercises({
@@ -267,7 +240,6 @@ export default function ReadingScreen() {
 
       let unused = candidates.filter((ex) => !usedIds.has(ex.id));
 
-      // 2. If no unused matching skill, fetch by nextDifficulty tier
       if (unused.length === 0) {
         candidates = await fetchBackendExercises({
           language: lang,
@@ -277,7 +249,6 @@ export default function ReadingScreen() {
         unused = candidates.filter((ex) => !usedIds.has(ex.id));
       }
 
-      // 3. Fallback to local exercise list filtering if needed
       if (unused.length === 0) {
         const localMatches = defaultLocalList.filter(
           (ex) => ex.difficulty === nextDiffNum && !usedIds.has(ex.id)
@@ -290,7 +261,6 @@ export default function ReadingScreen() {
       }
 
       const nextEx = (unused[0] || defaultLocalList[0]) as ReadingExercise;
-
       const newHistory = new Set(usedIds);
       newHistory.add(nextEx.id);
       setUsedIds(newHistory);
@@ -306,9 +276,6 @@ export default function ReadingScreen() {
     }
   };
 
-  /**
-   * Toggle handler for microphone button tap
-   */
   const handleMicTap = () => {
     if (micState === 'LISTENING') {
       stopReading();
@@ -349,47 +316,32 @@ export default function ReadingScreen() {
   const isBusy = isAssessing || micState === 'TRANSCRIBING' || isLoadingNext;
 
   return (
-    <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: theme.background }]}
-      edges={['top', 'left', 'right']}
-    >
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F8FAFC' }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Top Header Bar */}
+          {/* Header */}
           <View style={styles.topBar}>
             <Pressable
-              style={({ pressed }) => [
-                styles.backButton,
-                { backgroundColor: theme.backgroundElement },
-                (pressed || isBusy) && styles.buttonPressed,
-              ]}
+              style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
               onPress={() => !isBusy && router.back()}
               disabled={isBusy}
-              accessibilityRole="button"
-              accessibilityLabel="Back to Home"
             >
-              <Text style={[styles.backButtonText, { color: theme.text }]}>← Back</Text>
+              <Text style={styles.backButtonText}>← Back</Text>
             </Pressable>
 
-            <View style={styles.titleContainer}>
-              <Text style={[styles.screenTitle, { color: theme.text }]}>
-                Reading Practice
-              </Text>
-            </View>
+            <Text style={styles.screenTitle}>
+              {lang === 'ta' ? 'வாசித்தல் பயிற்சி' : 'Reading Practice'}
+            </Text>
 
-            <View style={[styles.langBadge, { backgroundColor: theme.backgroundElement }]}>
-              <Text style={styles.langBadgeText}>
-                {lang === 'ta' ? 'தமிழ் 🇮🇳' : 'English 🇬🇧'}
-              </Text>
-            </View>
+            <LanguageChip lang={lang} />
           </View>
 
           {isCompleted ? (
-            /* --- COMPLETION VIEW --- */
-            <View style={[styles.completionCard, { backgroundColor: '#4C6EF5' }]}>
+            /* --- SCREEN 5: READING COMPLETION VIEW --- */
+            <LearnlyCard style={styles.completionCard}>
               <Text style={styles.completionEmoji}>🎉</Text>
               <Text style={styles.completionTitle}>
                 {lang === 'ta' ? 'அற்புதம்!' : 'Awesome Job!'}
@@ -400,147 +352,89 @@ export default function ReadingScreen() {
                   : 'You completed all reading practice exercises!'}
               </Text>
 
-              <View style={styles.completionActions}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    styles.whiteButton,
-                    pressed && styles.buttonPressed,
-                  ]}
+              <View style={{ width: '100%', gap: 12 }}>
+                <LearnlyButton
+                  label={lang === 'ta' ? 'மீண்டும் தொடங்குக' : 'Practice Again'}
                   onPress={handleRestart}
-                >
-                  <Text style={styles.primaryButtonTextDark}>
-                    {lang === 'ta' ? 'மீண்டும் தொடங்குக' : 'Practice Again'}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.secondaryOutlineButton,
-                    pressed && styles.buttonPressed,
-                  ]}
+                  variant="primary"
+                />
+                <LearnlyButton
+                  label={lang === 'ta' ? 'முகப்புக்குச் செல்க' : 'Back to Home'}
                   onPress={() => router.back()}
-                >
-                  <Text style={styles.secondaryOutlineText}>
-                    {lang === 'ta' ? 'முகப்புக்குச் செல்க' : 'Back to Home'}
-                  </Text>
-                </Pressable>
+                  variant="outline"
+                />
               </View>
-            </View>
+            </LearnlyCard>
           ) : (
-            /* --- MAIN EXERCISE FLOW --- */
+            /* --- SCREEN 4: MAIN READING EXERCISE FLOW --- */
             <View style={styles.exerciseSection}>
-              {/* Progress Indicator */}
+              {/* Progress Indicator Bar */}
               <View style={styles.progressHeader}>
-                <Text style={[styles.progressText, { color: theme.textSecondary }]}>
-                  {lang === 'ta'
-                    ? `கேள்வி ${questionCount} / ${SESSION_TARGET_QUESTIONS}`
-                    : `Question ${questionCount} of ${SESSION_TARGET_QUESTIONS}`}
-                </Text>
-                <View style={[styles.progressBarTrack, { backgroundColor: theme.backgroundElement }]}>
-                  <View
-                    style={[
-                      styles.progressBarFill,
-                      { width: `${progressPercent}%`, backgroundColor: '#4C6EF5' },
-                    ]}
-                  />
+                <View style={styles.progressLabelRow}>
+                  <Text style={styles.progressText}>
+                    {lang === 'ta'
+                      ? `கேள்வி ${questionCount} / ${SESSION_TARGET_QUESTIONS}`
+                      : `Question ${questionCount} of ${SESSION_TARGET_QUESTIONS}`}
+                  </Text>
+                  <Text style={styles.diffBadge}>
+                    Level {currentDifficulty}
+                  </Text>
+                </View>
+                <View style={styles.progressBarTrack}>
+                  <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
                 </View>
               </View>
 
-              {/* Instruction Label */}
-              <Text style={[styles.instructionText, { color: theme.textSecondary }]}>
+              {/* Instruction */}
+              <Text style={styles.instructionText}>
                 {lang === 'ta'
                   ? 'வாக்கியத்தை சத்தமாக வாசிக்கவும்:'
                   : 'Read the sentence aloud:'}
               </Text>
 
-              {/* High-Readability Exercise Card */}
-              <View style={[styles.sentenceCard, { backgroundColor: theme.backgroundElement }]}>
+              {/* Readability Sentence Display Card */}
+              <LearnlyCard accentColor="#4F46E5" style={styles.sentenceCard}>
                 {isLoadingNext ? (
-                  <ActivityIndicator color="#4C6EF5" size="large" />
+                  <ActivityIndicator color="#4F46E5" size="large" />
                 ) : (
-                  <Text style={[styles.sentenceText, { color: theme.text }]}>
-                    "{currentExercise.text}"
+                  <Text style={styles.sentenceText}>
+                    "{currentExercise.text || currentExercise.content || ''}"
                   </Text>
                 )}
-              </View>
+              </LearnlyCard>
 
-              {/* Microphone Permission & Interaction Area */}
+              {/* Microphone Section */}
               <View style={styles.micSection}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.micButton,
-                    micState === 'IDLE' && styles.micIdle,
-                    micState === 'REQUESTING' && styles.micRequesting,
-                    micState === 'LISTENING' && styles.micListening,
-                    micState === 'TRANSCRIBING' && styles.micRequesting,
-                    micState === 'READY' && styles.micReady,
-                    micState === 'DENIED' && styles.micDenied,
-                    (pressed || isBusy) && styles.buttonPressed,
-                  ]}
+                <MicrophoneButton
+                  state={micState}
                   onPress={handleMicTap}
                   disabled={micState === 'REQUESTING' || isBusy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Tap to read aloud"
-                >
-                  <Text style={styles.micEmoji}>
-                    {micState === 'REQUESTING' || micState === 'TRANSCRIBING' || isLoadingNext || isAssessing ? '⏳' : micState === 'DENIED' ? '🔒' : '🎤'}
-                  </Text>
-                </Pressable>
-
-                {/* Clear Status Labels */}
-                <Text style={[styles.micStatusText, { color: theme.text }]}>
-                  {micState === 'IDLE' && !isAssessing && !assessmentResult && (lang === 'ta' ? 'பேசத் தட்டவும் 🎤' : 'Tap to Read 🎤')}
-                  {micState === 'REQUESTING' && (lang === 'ta' ? 'அணுகல் கேட்கப்படுகிறது...' : 'Requesting microphone access...')}
-                  {micState === 'LISTENING' && (lang === 'ta' ? 'கேட்கிறது... (நிறுத்த தட்டவும்)' : 'Listening... (Tap to stop)')}
-                  {micState === 'TRANSCRIBING' && (lang === 'ta' ? 'பேச்சு செயலாக்கப்படுகிறது...' : 'Transcribing...')}
-                  {isAssessing && (lang === 'ta' ? 'உங்கள் வாசிப்பு சரிபார்க்கப்படுகிறது...' : 'Analyzing your reading...')}
-                  {!isAssessing && assessmentResult && (lang === 'ta' ? 'மதிப்பீட்டு முடிவு 👇' : 'Assessment Result 👇')}
-                  {micState === 'DENIED' && (lang === 'ta' ? 'மைக்ரோஃபோன் அனுமதி தேவை' : 'Microphone permission needed')}
-                </Text>
-
-                {/* Status Banner / Permission Result */}
-                {micState === 'DENIED' && (
-                  <View style={styles.permDeniedBanner}>
-                    <Text style={styles.permDeniedText}>
-                      Microphone permission is required to practice reading.
-                    </Text>
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.retryButton,
-                        pressed && styles.buttonPressed,
-                      ]}
-                      onPress={startReading}
-                    >
-                      <Text style={styles.retryButtonText}>Try Requesting Again</Text>
-                    </Pressable>
-                  </View>
-                )}
+                />
               </View>
 
-              {/* Transcript Display Card */}
+              {/* Transcript Display Box */}
               {userTranscript && (
-                <View style={[styles.transcriptBox, { backgroundColor: theme.backgroundElement }]}>
-                  <Text style={[styles.transcriptLabel, { color: theme.textSecondary }]}>
+                <View style={styles.transcriptBox}>
+                  <Text style={styles.transcriptLabel}>
                     {lang === 'ta' ? 'நீங்கள் கூறியது:' : 'You said:'}
                   </Text>
-                  <Text style={[styles.transcriptText, { color: theme.text }]}>
+                  <Text style={styles.transcriptText}>
                     "{userTranscript}"
                   </Text>
                 </View>
               )}
 
-              {/* Empty Transcript Warning Banner */}
+              {/* Empty Transcript Warning */}
               {emptyTranscriptWarning && (
                 <View style={styles.warningBanner}>
                   <Text style={styles.warningText}>⚠️ {emptyTranscriptWarning}</Text>
                 </View>
               )}
 
-              {/* Loading State Banner */}
+              {/* Analyzing Indicator */}
               {isAssessing && (
                 <View style={styles.loadingBanner}>
-                  <ActivityIndicator color="#4C6EF5" size="small" style={{ marginRight: 8 }} />
+                  <ActivityIndicator color="#4F46E5" size="small" style={{ marginRight: 8 }} />
                   <Text style={styles.loadingText}>
                     {lang === 'ta'
                       ? 'உங்கள் வாசிப்பு சரிபார்க்கப்படுகிறது...'
@@ -549,31 +443,19 @@ export default function ReadingScreen() {
                 </View>
               )}
 
-              {/* API Network / Server Error Banner with Retry */}
+              {/* Error Banner */}
               {apiError && (
                 <View style={styles.errorBanner}>
                   <Text style={styles.errorText}>{apiError}</Text>
-                  {userTranscript && (
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.retryButton,
-                        { marginTop: 8, alignSelf: 'center' },
-                        pressed && styles.buttonPressed,
-                      ]}
-                      onPress={() => submitAssessment(userTranscript)}
-                    >
-                      <Text style={styles.retryButtonText}>
-                        {lang === 'ta' ? 'மீண்டும் முயற்சிக்கவும்' : 'Retry Assessment'}
-                      </Text>
-                    </Pressable>
-                  )}
                 </View>
               )}
 
-              {/* Real Backend Assessment Results Card */}
+              {/* --- SCREEN 5: AI ASSESSMENT RESULT CARD --- */}
               {assessmentResult && (
-                <View style={[styles.assessmentCard, { backgroundColor: theme.backgroundElement }]}>
-                  {/* Child-Friendly Status Banner */}
+                <LearnlyCard
+                  accentColor={assessmentResult.needsPractice ? '#F59E0B' : '#10B981'}
+                  style={styles.assessmentCard}
+                >
                   <Text
                     style={[
                       styles.assessmentStatusHeader,
@@ -589,30 +471,29 @@ export default function ReadingScreen() {
                       : 'Great job! 🎉'}
                   </Text>
 
-                  {/* Primary Metrics Row */}
+                  {/* Metrics Grid */}
                   <View style={styles.metricsRow}>
                     <View style={styles.metricItem}>
                       <Text style={styles.metricValue}>{assessmentResult.score}/100</Text>
-                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Score</Text>
+                      <Text style={styles.metricLabel}>Score</Text>
                     </View>
                     <View style={styles.metricItem}>
                       <Text style={styles.metricValue}>{assessmentResult.accuracy}%</Text>
-                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Accuracy</Text>
+                      <Text style={styles.metricLabel}>Accuracy</Text>
                     </View>
                     <View style={styles.metricItem}>
                       <Text style={styles.metricValue}>{assessmentResult.fluency}%</Text>
-                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Fluency</Text>
+                      <Text style={styles.metricLabel}>Fluency</Text>
                     </View>
                   </View>
 
-                  {/* Secondary Details */}
                   <View style={styles.detailsGrid}>
-                    <Text style={[styles.detailText, { color: theme.textSecondary }]}>
-                      Skill: <Text style={{ color: theme.text, fontWeight: '700' }}>{assessmentResult.skill}</Text>
+                    <Text style={styles.detailText}>
+                      Skill: <Text style={{ fontWeight: '800', color: '#0F172A' }}>{assessmentResult.skill}</Text>
                     </Text>
-                    <Text style={[styles.detailText, { color: theme.textSecondary }]}>
+                    <Text style={styles.detailText}>
                       Next level:{' '}
-                      <Text style={{ color: '#4C6EF5', fontWeight: '700' }}>
+                      <Text style={{ fontWeight: '800', color: '#4F46E5' }}>
                         {formatDifficulty(assessmentResult.nextDifficulty)}
                       </Text>
                     </Text>
@@ -624,35 +505,24 @@ export default function ReadingScreen() {
                       💬 {assessmentResult.feedback}
                     </Text>
                   </View>
-                </View>
+                </LearnlyCard>
               )}
 
-              {/* Dynamic Action Button */}
+              {/* Next Question CTA */}
               {assessmentResult && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    isLoadingNext && styles.buttonDisabled,
-                    (pressed || isLoadingNext) && styles.buttonPressed,
-                  ]}
-                  onPress={handleNextQuestion}
-                  disabled={isLoadingNext}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.primaryButtonText}>
-                    {isLoadingNext
-                      ? lang === 'ta'
-                        ? 'ஏற்றுகிறது...'
-                        : 'Loading...'
+                <LearnlyButton
+                  label={
+                    isLoadingNext
+                      ? 'Loading...'
                       : questionCount === SESSION_TARGET_QUESTIONS
-                      ? lang === 'ta'
-                        ? 'முடிக்கவும்'
-                        : 'Finish'
-                      : lang === 'ta'
-                      ? 'அடுத்தது ➔'
-                      : 'Next ➔'}
-                  </Text>
-                </Pressable>
+                      ? (lang === 'ta' ? 'முடிக்கவும் 🎉' : 'Finish Session 🎉')
+                      : (lang === 'ta' ? 'அடுத்தது ➔' : 'Next Exercise ➔')
+                  }
+                  onPress={handleNextQuestion}
+                  variant="primary"
+                  loading={isLoadingNext}
+                  style={{ marginTop: 16 }}
+                />
               )}
             </View>
           )}
@@ -669,7 +539,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.five,
+    paddingBottom: Spacing.five,
     alignItems: 'center',
   },
   container: {
@@ -683,175 +553,105 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.four,
   },
   backButton: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
   },
   backButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#334155',
   },
-  titleContainer: {
-    alignItems: 'center',
+  pressed: {
+    opacity: 0.7,
   },
   screenTitle: {
     fontSize: 18,
     fontWeight: '800',
-  },
-  langBadge: {
-    paddingHorizontal: Spacing.two + 4,
-    paddingVertical: Spacing.one + 2,
-    borderRadius: 12,
-  },
-  langBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
+    color: '#0F172A',
   },
   exerciseSection: {
     width: '100%',
   },
   progressHeader: {
-    marginBottom: Spacing.four,
+    marginBottom: 20,
+  },
+  progressLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
   progressText: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: Spacing.one,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  diffBadge: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#4F46E5',
   },
   progressBarTrack: {
     height: 10,
     borderRadius: 5,
+    backgroundColor: '#E2E8F0',
     overflow: 'hidden',
     width: '100%',
   },
   progressBarFill: {
     height: '100%',
     borderRadius: 5,
+    backgroundColor: '#4F46E5',
   },
   instructionText: {
     fontSize: 15,
-    fontWeight: '600',
-    marginBottom: Spacing.two,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 10,
   },
   sentenceCard: {
-    padding: Spacing.five,
-    borderRadius: 20,
+    padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 140,
-    marginBottom: Spacing.four,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    marginBottom: 24,
   },
   sentenceText: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#0F172A',
     textAlign: 'center',
     lineHeight: 38,
   },
   micSection: {
     alignItems: 'center',
-    marginBottom: Spacing.four,
-  },
-  micButton: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.two,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  micIdle: {
-    backgroundColor: '#EEF2FF',
-    borderWidth: 2,
-    borderColor: '#C7D2FE',
-  },
-  micRequesting: {
-    backgroundColor: '#FEF3C7',
-    borderWidth: 2,
-    borderColor: '#F59E0B',
-  },
-  micListening: {
-    backgroundColor: '#FFE4E6',
-    borderWidth: 3,
-    borderColor: '#F43F5E',
-  },
-  micReady: {
-    backgroundColor: '#E6F4EA',
-    borderWidth: 3,
-    borderColor: '#34A853',
-  },
-  micDenied: {
-    backgroundColor: '#FCE8E6',
-    borderWidth: 3,
-    borderColor: '#EA4335',
-  },
-  micEmoji: {
-    fontSize: 38,
-  },
-  micStatusText: {
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  permDeniedBanner: {
-    marginTop: Spacing.two,
-    backgroundColor: '#FCE8E6',
-    padding: Spacing.three,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#EA4335',
-    alignItems: 'center',
-    width: '100%',
-  },
-  permDeniedText: {
-    color: '#C5221F',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: Spacing.two,
-  },
-  retryButton: {
-    backgroundColor: '#4C6EF5',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one + 2,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
+    marginBottom: 20,
   },
   transcriptBox: {
-    padding: Spacing.three,
-    borderRadius: 14,
-    marginBottom: Spacing.four,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4C6EF5',
+    backgroundColor: '#F1F5F9',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
   },
   transcriptLabel: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
     marginBottom: 4,
   },
   transcriptText: {
     fontSize: 18,
     fontWeight: '700',
-    fontStyle: 'italic',
+    color: '#0F172A',
   },
   warningBanner: {
     backgroundColor: '#FEF3C7',
-    padding: Spacing.three,
-    borderRadius: 12,
-    marginBottom: Spacing.four,
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#F59E0B',
   },
@@ -865,52 +665,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EEF2FF',
-    padding: Spacing.three,
-    borderRadius: 12,
-    marginBottom: Spacing.four,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
+    backgroundColor: '#EDE9FE',
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 16,
   },
   loadingText: {
-    color: '#3730A3',
-    fontSize: 15,
+    color: '#4F46E5',
+    fontSize: 14,
     fontWeight: '700',
   },
   errorBanner: {
-    backgroundColor: '#FCE8E6',
-    padding: Spacing.three,
-    borderRadius: 12,
-    marginBottom: Spacing.four,
+    backgroundColor: '#FFE4E6',
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#EA4335',
+    borderColor: '#F43F5E',
   },
   errorText: {
-    color: '#C5221F',
+    color: '#E11D48',
     fontSize: 14,
     fontWeight: '700',
     textAlign: 'center',
   },
   assessmentCard: {
-    padding: Spacing.four,
-    borderRadius: 16,
-    marginBottom: Spacing.five,
-    borderLeftWidth: 5,
-    borderLeftColor: '#4C6EF5',
+    padding: 20,
+    marginBottom: 16,
   },
   assessmentStatusHeader: {
     fontSize: 20,
     fontWeight: '800',
-    marginBottom: Spacing.three,
     textAlign: 'center',
+    marginBottom: 16,
   },
   metricsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: Spacing.four,
-    backgroundColor: '#EEF2FF',
-    paddingVertical: Spacing.three,
-    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 16,
   },
   metricItem: {
     alignItems: 'center',
@@ -918,97 +713,55 @@ const styles = StyleSheet.create({
   metricValue: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#4C6EF5',
+    color: '#0F172A',
   },
   metricLabel: {
     fontSize: 12,
     fontWeight: '600',
+    color: '#64748B',
     marginTop: 2,
   },
   detailsGrid: {
-    gap: Spacing.one + 2,
-    marginBottom: Spacing.three,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    paddingHorizontal: 4,
   },
   detailText: {
-    fontSize: 14,
+    fontSize: 13,
+    color: '#475569',
   },
   aiFeedbackBox: {
-    backgroundColor: '#FEF3C7',
-    padding: Spacing.three,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#F59E0B',
+    backgroundColor: '#EDE9FE',
+    padding: 14,
+    borderRadius: 14,
   },
   aiFeedbackText: {
-    color: '#92400E',
+    color: '#4338CA',
     fontSize: 14,
     fontWeight: '700',
-  },
-  primaryButton: {
-    backgroundColor: '#4C6EF5',
-    paddingVertical: Spacing.four,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
+    lineHeight: 20,
   },
   completionCard: {
-    padding: Spacing.five,
-    borderRadius: 24,
+    padding: 28,
     alignItems: 'center',
-    marginTop: Spacing.three,
+    marginTop: 20,
   },
   completionEmoji: {
-    fontSize: 56,
-    marginBottom: Spacing.two,
+    fontSize: 60,
+    marginBottom: 12,
   },
   completionTitle: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: Spacing.two,
+    color: '#0F172A',
+    marginBottom: 8,
   },
   completionSubtitle: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#E0E7FF',
+    color: '#475569',
     textAlign: 'center',
-    marginBottom: Spacing.five,
+    marginBottom: 24,
     lineHeight: 24,
-  },
-  completionActions: {
-    width: '100%',
-    gap: Spacing.three,
-  },
-  whiteButton: {
-    backgroundColor: '#FFFFFF',
-  },
-  primaryButtonTextDark: {
-    color: '#4C6EF5',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  secondaryOutlineButton: {
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    paddingVertical: Spacing.three,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  secondaryOutlineText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
   },
 });

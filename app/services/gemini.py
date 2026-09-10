@@ -17,7 +17,7 @@ def assess_with_gemini(req: AssessmentRequest) -> AssessmentResponse:
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
     client = genai.Client(api_key=api_key)
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     prompt = f"""
 You are an educational response evaluator for Learnly.
 Do not diagnose dyslexia or make medical claims.
@@ -28,21 +28,47 @@ Student transcript: {req.userTranscript}
 Evaluate this reading response. Return only the structured fields.
 Give child-friendly feedback in the student's language.
 """
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=GeminiAssessment,
-        ),
-    )
-    parsed = response.parsed or GeminiAssessment.model_validate_json(response.text)
-    return AssessmentResponse(
-        score=parsed.score,
-        accuracy=parsed.accuracy,
-        fluency=parsed.fluency,
-        skill=parsed.skill,
-        needsPractice=parsed.needsPractice,
-        feedback=parsed.feedback,
-        nextDifficulty="medium",
-    )
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=GeminiAssessment,
+            ),
+        )
+        parsed = response.parsed or GeminiAssessment.model_validate_json(response.text)
+        return AssessmentResponse(
+            score=parsed.score,
+            accuracy=parsed.accuracy,
+            fluency=parsed.fluency,
+            skill=parsed.skill,
+            needsPractice=parsed.needsPractice,
+            feedback=parsed.feedback,
+            nextDifficulty="medium",
+        )
+    except Exception as exc:
+        print(f"Gemini evaluation failed with model {model}: {exc}. Retrying with gemini-1.5-flash...")
+        try:
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=GeminiAssessment,
+                ),
+            )
+            parsed = response.parsed or GeminiAssessment.model_validate_json(response.text)
+            return AssessmentResponse(
+                score=parsed.score,
+                accuracy=parsed.accuracy,
+                fluency=parsed.fluency,
+                skill=parsed.skill,
+                needsPractice=parsed.needsPractice,
+                feedback=parsed.feedback,
+                nextDifficulty="medium",
+            )
+        except Exception as exc2:
+            print(f"Gemini fallback evaluation failed: {exc2}. Falling back to mock assessment.")
+            from app.services.mock_assessment import assess_mock
+            return assess_mock(req)

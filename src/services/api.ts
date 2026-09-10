@@ -2,7 +2,7 @@ import { File } from 'expo-file-system';
 import { fetch } from 'expo/fetch';
 
 import { API_BASE_URL } from '@/config/api';
-import { DEMO_CHILD_ID } from '@/config/learner';
+import { getCurrentChildId } from '@/config/learner';
 import { READING_EXERCISES, WRITING_EXERCISES } from '@/data/exercises';
 import { AssessmentRequest, AssessmentResponse } from '@/types/assessment';
 import { ExerciseItem } from '@/types/exercise';
@@ -10,7 +10,7 @@ import { ExerciseItem } from '@/types/exercise';
 
 /**
  * Sends a reading or writing exercise assessment payload to the FastAPI backend.
- * Automatically attaches DEMO_CHILD_ID so attempts, progress, and streaks persist in Supabase.
+ * Automatically attaches authenticated user ID so attempts, progress, and streaks persist in Supabase.
  * 
  * Endpoint: POST /api/assess
  */
@@ -20,7 +20,7 @@ export async function assessReading(payload: AssessmentRequest): Promise<Assessm
 
   const requestPayload: AssessmentRequest = {
     ...payload,
-    childId: payload.childId || DEMO_CHILD_ID,
+    childId: payload.childId || getCurrentChildId(),
   };
 
   try {
@@ -63,36 +63,39 @@ export async function assessReading(payload: AssessmentRequest): Promise<Assessm
 export async function transcribeAudio(audioUri: string, language: string): Promise<string> {
   const languageCode = language === 'ta' ? 'ta-IN' : 'en-IN';
 
-  // Construct Expo SDK 57 native File instance from audio URI
-  const audioFile = new File(audioUri);
+  const fileExtension = audioUri.split('.').pop()?.split('?')[0] || 'm4a';
+  const fileName = `recording.${fileExtension}`;
+  const mimeType = fileExtension === 'wav' ? 'audio/wav' : 'audio/m4a';
 
-  // Validate that recorded audio file actually exists on device disk before upload
-  if (!audioFile.exists) {
-    throw new Error(`Audio file does not exist on device disk: ${audioUri}`);
-  }
-
+  // Standard React Native FormData file object attachment
   const formData = new FormData();
-  formData.append('file', audioFile as any);
+  formData.append('file', {
+    uri: audioUri,
+    name: fileName,
+    type: mimeType,
+  } as any);
   formData.append('language', languageCode);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout for STT audio upload
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout for STT inference
 
   try {
-    // Attempt primary backend STT endpoint /api/stt using expo/fetch
-    let response = await fetch(`${API_BASE_URL}/api/stt`, {
+    let response = await globalThis.fetch(`${API_BASE_URL}/api/stt`, {
       method: 'POST',
       body: formData as any,
       signal: controller.signal,
     });
 
-    // Fallback to /api/transcribe if /api/stt returns 404
     if (response.status === 404) {
       const fallbackFormData = new FormData();
-      fallbackFormData.append('file', audioFile as any);
+      fallbackFormData.append('file', {
+        uri: audioUri,
+        name: fileName,
+        type: mimeType,
+      } as any);
       fallbackFormData.append('language', languageCode);
 
-      response = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      response = await globalThis.fetch(`${API_BASE_URL}/api/transcribe`, {
         method: 'POST',
         body: fallbackFormData as any,
         signal: controller.signal,
