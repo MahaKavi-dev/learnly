@@ -49,6 +49,10 @@ export default function ProgressScreen() {
   const levelDetails = getLevelProgressDetails(progressState.xp);
   const badgesList = checkBadges(progressState);
 
+  // Derive strength stat from highest accuracy/fluency score
+  const isReadingStronger = progressState.readingAccuracy >= progressState.writingSpelling;
+  const topScore = Math.max(progressState.readingAccuracy, progressState.writingSpelling);
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F8FAFC' }]}>
       <ScrollView
@@ -113,7 +117,7 @@ export default function ProgressScreen() {
             </View>
           </View>
 
-          {/* Streaks Stats */}
+          {/* Streaks Stats Grid */}
           <View style={styles.statsGrid}>
             <LearnlyCard style={styles.statCard}>
               <Text style={styles.statEmoji}>🔥</Text>
@@ -136,22 +140,129 @@ export default function ProgressScreen() {
             </LearnlyCard>
           </View>
 
-          {/* Encouraging Weak Skill Recommendation */}
-          {progressState.weakSkill && (
-            <View style={styles.weakSkillBox}>
-              <Text style={styles.weakSkillTitle}>
-                💡 {lang === 'ta' ? 'பயிற்சி தேவைப்படும் திறன்:' : 'Needs Practice:'}
+          {/* --- MY LEARNING JOURNEY ADAPTIVE INSIGHTS SECTION --- */}
+          <View style={styles.journeySection}>
+            <View style={styles.journeyHeaderRow}>
+              <Text style={styles.journeySectionTitle}>
+                {lang === 'ta' ? 'என் கற்றல் பயணம்' : 'My Learning Journey'}
               </Text>
-              <Text style={styles.weakSkillName}>
-                {progressState.weakSkill}
-              </Text>
-              <Text style={styles.weakSkillSubtext}>
-                {lang === 'ta'
-                  ? 'இந்தத் திறனில் மேலும் பயிற்சி செய்து புள்ளிகளை உயர்த்தவும்!'
-                  : 'Keep practicing this skill to improve your score!'}
+              <Text style={styles.journeySubHeader}>
+                {lang === 'ta' ? 'உங்களுக்காக தனிப்பயனாக்கப்பட்டது ✨' : 'Personalized for you ✨'}
               </Text>
             </View>
-          )}
+
+            {/* Visual Adaptive Practice Cycle Diagram */}
+            <View style={styles.flowBanner}>
+              <Text style={styles.flowBannerTitle}>
+                {lang === 'ta' ? 'கற்றல் சுழற்சி' : 'Adaptive Learning Cycle'}
+              </Text>
+              <View style={styles.flowRow}>
+                <View style={styles.flowStep}>
+                  <Text style={styles.flowStepEmoji}>📖</Text>
+                  <Text style={styles.flowStepText}>{lang === 'ta' ? 'பயிற்சி' : 'Practice'}</Text>
+                </View>
+                <Text style={styles.flowArrow}>➔</Text>
+                <View style={styles.flowStep}>
+                  <Text style={styles.flowStepEmoji}>✨</Text>
+                  <Text style={styles.flowStepText}>{lang === 'ta' ? 'மதிப்பீடு' : 'Assess'}</Text>
+                </View>
+                <Text style={styles.flowArrow}>➔</Text>
+                <View style={styles.flowStep}>
+                  <Text style={styles.flowStepEmoji}>👤</Text>
+                  <Text style={styles.flowStepText}>{lang === 'ta' ? 'சுயவிவரம்' : 'Profile'}</Text>
+                </View>
+                <Text style={styles.flowArrow}>➔</Text>
+                <View style={styles.flowStep}>
+                  <Text style={styles.flowStepEmoji}>🎯</Text>
+                  <Text style={styles.flowStepText}>{lang === 'ta' ? 'அடுத்த நிலை' : 'Next Level'}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.journeyGrid}>
+              {/* Card 1: STRENGTH */}
+              <View style={[styles.journeyCard, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}>
+                <Text style={styles.journeyEmoji}>🌟</Text>
+                <View style={styles.journeyCardBody}>
+                  <Text style={[styles.journeyTag, { color: '#4F46E5' }]}>
+                    {lang === 'ta' ? 'வலுவான திறன்' : 'STRENGTH'}
+                  </Text>
+                  <Text style={styles.journeyTitle}>
+                    {isReadingStronger
+                      ? (lang === 'ta' ? 'வாசிப்பு துல்லியம் சிறப்பானது!' : "You're doing great at Reading!")
+                      : (lang === 'ta' ? 'எழுத்துக்கூட்டு பயிற்சி சிறப்பானது!' : "You're doing great at Writing!")}
+                  </Text>
+                  <Text style={styles.journeyDesc}>
+                    {lang === 'ta'
+                      ? `சமீபத்திய பயிற்சியில் ${topScore}% துல்லியம் பெறப்பட்டுள்ளது.`
+                      : `Based on your recent practice with ${topScore}% overall accuracy.`}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Card 2: PRACTICE NEXT */}
+              <View style={[styles.journeyCard, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+                <Text style={styles.journeyEmoji}>💪</Text>
+                <View style={styles.journeyCardBody}>
+                  <Text style={[styles.journeyTag, { color: '#92400E' }]}>
+                    {lang === 'ta' ? 'அடுத்த பயிற்சி' : 'PRACTICE NEXT'}
+                  </Text>
+                  <Text style={[styles.journeyTitle, { color: '#78350F' }]}>
+                    {progressState.weakSkill
+                      ? (lang === 'ta' ? `${progressState.weakSkill} பயிற்சி செய்வோம்` : `Let's practice ${progressState.weakSkill}`)
+                      : (lang === 'ta' ? 'வாசிப்பு துல்லியத்தை பயிற்சி செய்வோம்' : 'Let\'s practice Reading Accuracy')}
+                  </Text>
+                  <Text style={[styles.journeyDesc, { color: '#B45309' }]}>
+                    {lang === 'ta'
+                      ? 'இந்தத் திறனில் கூடுதல் கவனம் செலுத்தி புள்ளிகளை உயர்த்தலாம்.'
+                      : 'Focusing on this skill will help boost your learning level.'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Card 3: LEVEL UP */}
+              <View style={[styles.journeyCard, { backgroundColor: '#E6F4EA', borderColor: '#34A853' }]}>
+                <Text style={styles.journeyEmoji}>📈</Text>
+                <View style={styles.journeyCardBody}>
+                  <Text style={[styles.journeyTag, { color: '#137333' }]}>
+                    {lang === 'ta' ? 'அடுத்த நிலை உயர்த்தல்' : 'LEVEL UP'}
+                  </Text>
+                  <Text style={[styles.journeyTitle, { color: '#0F5223' }]}>
+                    {levelDetails.currentLevel < 3
+                      ? (lang === 'ta'
+                        ? `நிலை ${levelDetails.nextLevel} எட்ட இன்னும் ${levelDetails.maxXP - progressState.xp} XP தேவை`
+                        : `Keep practicing to reach Level ${levelDetails.nextLevel}`)
+                      : (lang === 'ta' ? 'உச்ச நிலை அடையப்பட்டது!' : 'Max Level Reached!')}
+                  </Text>
+                  <Text style={[styles.journeyDesc, { color: '#137333' }]}>
+                    {lang === 'ta'
+                      ? `தற்போதைய XP: ${progressState.xp} (நிலையின் முன்னேற்றம்: ${levelDetails.percent}%)`
+                      : `Current XP: ${progressState.xp} (${levelDetails.percent}% level progress completed).`}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Card 4: PERSONALIZED ADAPTIVE PRACTICE */}
+              <View style={[styles.journeyCard, { backgroundColor: '#F3E8FF', borderColor: '#C084FC' }]}>
+                <Text style={styles.journeyEmoji}>🎯</Text>
+                <View style={styles.journeyCardBody}>
+                  <Text style={[styles.journeyTag, { color: '#6B21A8' }]}>
+                    {lang === 'ta' ? 'தனிப்பயனாக்கப்பட்ட பயிற்சி' : 'PERSONALIZED PRACTICE'}
+                  </Text>
+                  <Text style={[styles.journeyTitle, { color: '#581C87' }]}>
+                    {lang === 'ta'
+                      ? 'உங்கள் முன்னேற்றத்திற்கு ஏற்ப பயிற்சிகள் மாற்றப்படுகிறது'
+                      : 'Your next practice is adjusted to your progress'}
+                  </Text>
+                  <Text style={[styles.journeyDesc, { color: '#7E22CE' }]}>
+                    {lang === 'ta'
+                      ? 'மதிப்பீட்டு முடிவுகளின் அடிப்படையில் அடுத்த கேள்வி தேர்வு செய்யப்படுகிறது.'
+                      : 'Exercise difficulty dynamically adapts based on evaluation results.'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
 
           {/* Skill Performance Breakdown */}
           <Text style={styles.sectionHeading}>
@@ -385,30 +496,100 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#64748B',
   },
-  weakSkillBox: {
-    backgroundColor: '#FEF3C7',
-    padding: 18,
-    borderRadius: 18,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#F59E0B',
+  journeySection: {
+    marginBottom: 24,
   },
-  weakSkillTitle: {
-    color: '#92400E',
-    fontSize: 13,
+  journeyHeaderRow: {
+    marginBottom: 12,
+  },
+  journeySectionTitle: {
+    fontSize: 20,
     fontWeight: '800',
-    marginBottom: 2,
+    color: '#0F172A',
   },
-  weakSkillName: {
-    color: '#B45309',
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  weakSkillSubtext: {
-    color: '#78350F',
+  journeySubHeader: {
     fontSize: 13,
     fontWeight: '600',
+    color: '#4F46E5',
+    marginTop: 2,
+  },
+  flowBanner: {
+    backgroundColor: '#FFFFFF',
+    padding: 14,
+    borderRadius: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  flowBannerTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  flowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  flowStep: {
+    alignItems: 'center',
+  },
+  flowStepEmoji: {
+    fontSize: 22,
+    marginBottom: 2,
+  },
+  flowStepText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  flowArrow: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#4F46E5',
+  },
+  journeyGrid: {
+    gap: 12,
+  },
+  journeyCard: {
+    flexDirection: 'row',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 12,
+  },
+  journeyEmoji: {
+    fontSize: 32,
+  },
+  journeyCardBody: {
+    flex: 1,
+  },
+  journeyTag: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  journeyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  journeyDesc: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 17,
   },
   sectionHeading: {
     fontSize: 20,

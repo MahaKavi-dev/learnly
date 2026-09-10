@@ -1,12 +1,10 @@
-import { File } from 'expo-file-system';
-import { fetch } from 'expo/fetch';
+import { Platform } from 'react-native';
 
 import { API_BASE_URL } from '@/config/api';
 import { getCurrentChildId } from '@/config/learner';
 import { READING_EXERCISES, WRITING_EXERCISES } from '@/data/exercises';
 import { AssessmentRequest, AssessmentResponse } from '@/types/assessment';
 import { ExerciseItem } from '@/types/exercise';
-
 
 /**
  * Sends a reading or writing exercise assessment payload to the FastAPI backend.
@@ -51,7 +49,7 @@ export async function assessReading(payload: AssessmentRequest): Promise<Assessm
 
 /**
  * Sends a recorded audio file to the backend Speech-to-Text (STT) endpoint.
- * Uses Expo SDK 57 native File object (expo-file-system) and Expo fetch (expo/fetch).
+ * Uses standard React Native multipart FormData serialization compatible with Android & iOS.
  * 
  * Language codes:
  * English -> en-IN
@@ -63,14 +61,20 @@ export async function assessReading(payload: AssessmentRequest): Promise<Assessm
 export async function transcribeAudio(audioUri: string, language: string): Promise<string> {
   const languageCode = language === 'ta' ? 'ta-IN' : 'en-IN';
 
-  const fileExtension = audioUri.split('.').pop()?.split('?')[0] || 'm4a';
-  const fileName = `recording.${fileExtension}`;
-  const mimeType = fileExtension === 'wav' ? 'audio/wav' : 'audio/m4a';
+  // Ensure uri starts with file:// on Android if missing local file scheme
+  const cleanUri =
+    Platform.OS === 'android' && !audioUri.startsWith('file://') && !audioUri.startsWith('content://')
+      ? `file://${audioUri}`
+      : audioUri;
 
-  // Standard React Native FormData file object attachment
+  const fileExtension = cleanUri.split('.').pop()?.split('?')[0] || 'm4a';
+  const fileName = `recording.${fileExtension}`;
+  const mimeType = fileExtension === 'wav' ? 'audio/wav' : fileExtension === 'mp3' ? 'audio/mp3' : 'audio/m4a';
+
+  // React Native native FormData part object shape
   const formData = new FormData();
   formData.append('file', {
-    uri: audioUri,
+    uri: cleanUri,
     name: fileName,
     type: mimeType,
   } as any);
@@ -89,7 +93,7 @@ export async function transcribeAudio(audioUri: string, language: string): Promi
     if (response.status === 404) {
       const fallbackFormData = new FormData();
       fallbackFormData.append('file', {
-        uri: audioUri,
+        uri: cleanUri,
         name: fileName,
         type: mimeType,
       } as any);
@@ -156,6 +160,7 @@ export async function fetchBackendExercises(params: FetchExercisesParams): Promi
           text: item.content || item.text || '',
           prompt: item.content || item.prompt || '',
           expectedAnswer: item.expected_answer || item.expectedAnswer || '',
+          expected_answer: item.expected_answer || item.expectedAnswer || '',
           questionNumber: idx + 1,
         }));
       }
@@ -186,4 +191,3 @@ export async function fetchBackendExercises(params: FetchExercisesParams): Promi
 
   return filtered.length > 0 ? filtered : localList;
 }
-
