@@ -5,6 +5,6 @@ pydantic
 google-genai
 supabase
 pytest
-google-cloud-speech
 python-multipart
-
+faster-whisper
+imageio-ffmpeg
