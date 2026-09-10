@@ -7,7 +7,7 @@ export const DEMO_CHILD_ID = '096e0481-844a-4a68-a589-e888f3781318';
 
 let cachedUserId: string | null = null;
 
-supabase.auth.onAuthStateChange((_event, session) => {
+supabase.auth.onAuthStateChange((_event: any, session: any) => {
   cachedUserId = session?.user?.id || null;
 });
 

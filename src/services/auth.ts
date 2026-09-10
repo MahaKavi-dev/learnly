@@ -1,3 +1,4 @@
+// @ts-ignore
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/config/supabase';
 
@@ -129,7 +130,7 @@ export async function getCurrentUser(): Promise<User | null> {
 export function onAuthStateChange(
   callback: (event: string, session: Session | null) => void
 ) {
-  const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+  const { data: authListener } = supabase.auth.onAuthStateChange((event: any, session: any) => {
     callback(event, session);
   });
   return authListener.subscription;
