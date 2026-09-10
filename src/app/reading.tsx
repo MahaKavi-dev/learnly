@@ -181,7 +181,7 @@ export default function ReadingScreen() {
     try {
       const result = await assessReading({
         exerciseId: currentExercise.id,
-        expectedText: currentExercise.text,
+        expectedText: currentExercise.text || currentExercise.content || '',
         userTranscript: transcript.trim(),
         language: currentExercise.language || lang,
         childId: getCurrentChildId(),
@@ -398,7 +398,7 @@ export default function ReadingScreen() {
                   <ActivityIndicator color="#4F46E5" size="large" />
                 ) : (
                   <Text style={styles.sentenceText}>
-                    "{currentExercise.text}"
+                    "{currentExercise.text || currentExercise.content || ''}"
                   </Text>
                 )}
               </LearnlyCard>

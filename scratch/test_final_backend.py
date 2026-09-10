@@ -60,8 +60,8 @@ else:
 print("\n4. Testing POST /api/assess (English Correct Answer)...")
 r5 = client.post("/api/assess", json={
     "exerciseId": "ef319c72-2dbd-4d7c-9726-32362d13c8dc",
-    "expectedText": "The sun is bright.",
-    "userTranscript": "The sun is bright",
+    "expectedText": "B",
+    "userTranscript": "B",
     "language": "en"
 })
 assert r5.status_code == 200
