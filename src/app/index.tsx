@@ -246,7 +246,7 @@ export default function HomeScreen() {
                       Writing
                     </Text>
                     <Text style={[styles.featureDesc, { color: theme.textSecondary }]}>
-                      Practice stroke tracing & letter formation
+                      Practice spelling & sentence writing
                     </Text>
                   </View>
                   <Text style={[styles.arrowIcon, { color: theme.textSecondary }]}>➔</Text>

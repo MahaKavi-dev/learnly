@@ -89,37 +89,38 @@ def transcribe_audio(file_bytes: bytes, filename: str, language: str) -> str:
     lang_code = _normalize_language(language)
     ext = os.path.splitext(filename.lower())[1] if filename else ""
     
-    # Convert all non-wav formats (ogg, opus, m4a, mp3, 3gp, webm) to 16kHz mono LINEAR16 WAV
-    needs_conversion = ext not in (".wav", ".wave")
+    needs_conversion = False
     audio_bytes = file_bytes
     encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
     sample_rate = 16000
+
+    if ext in (".wav", ".wave"):
+        encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
+        sample_rate = 16000
+    elif ext == ".mp3":
+        encoding = speech.RecognitionConfig.AudioEncoding.MP3
+        sample_rate = 16000
+    elif ext == ".flac":
+        encoding = speech.RecognitionConfig.AudioEncoding.FLAC
+        sample_rate = 16000
+    elif ext in (".ogg", ".opus"):
+        encoding = speech.RecognitionConfig.AudioEncoding.OGG_OPUS
+        sample_rate = 16000
+    else:
+        needs_conversion = True
 
     if needs_conversion:
         audio_bytes = _convert_audio_to_wav(file_bytes, input_extension=ext or ".m4a")
         encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
         sample_rate = 16000
 
-    # Initialize Google Cloud Speech Client with automatic quota project resolution
+    # Initialize Google Cloud Speech Client
     client_kwargs = {}
+    quota_project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GOOGLE_QUOTA_PROJECT")
+    if quota_project:
+        client_kwargs["client_options"] = ClientOptions(quota_project_id=quota_project)
+
     try:
-        import google.auth
-        credentials, default_project = google.auth.default()
-        quota_project = (
-            os.getenv("GOOGLE_CLOUD_PROJECT")
-            or os.getenv("GOOGLE_QUOTA_PROJECT")
-            or os.getenv("GCP_PROJECT")
-            or getattr(credentials, "quota_project_id", None)
-            or default_project
-        )
-        client_kwargs["credentials"] = credentials
-        if quota_project:
-            client_kwargs["client_options"] = ClientOptions(quota_project_id=str(quota_project))
-            if hasattr(credentials, "with_quota_project"):
-                try:
-                    client_kwargs["credentials"] = credentials.with_quota_project(str(quota_project))
-                except Exception:
-                    pass
         client = speech.SpeechClient(**client_kwargs)
     except (DefaultCredentialsError, Exception) as err:
         logger.error(f"Failed to initialize SpeechClient: {err}")
@@ -159,4 +160,7 @@ def transcribe_audio(file_bytes: bytes, filename: str, language: str) -> str:
         if result.alternatives:
             transcripts.append(result.alternatives[0].transcript)
 
-    return " ".join(transcripts).strip()
+    transcript = " ".join(transcripts).strip()
+    if not transcript:
+        logger.info("Google STT returned no speech results.")
+    return transcript
