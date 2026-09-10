@@ -41,3 +41,14 @@ example
 # generated native folders
 /ios
 /android
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
