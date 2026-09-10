@@ -22,6 +22,7 @@ class AssessmentRequest(BaseModel):
     expectedText: str = Field(min_length=1)
     userTranscript: str = Field(min_length=1)
     language: Language
+    childId: str | None = None
 
 class AssessmentResponse(BaseModel):
     score: int = Field(ge=0, le=100)
