@@ -179,8 +179,8 @@ export default function HomeScreen() {
                   </Text>
                   <Text style={styles.heroSubtitle}>
                     {selectedLanguage === 'ta'
-                      ? '5 கேள்விகளை முடித்து +30 XP பெறுங்கள்!'
-                      : 'Complete 5 reading exercises & earn +30 XP!'}
+                      ? `${progressState?.readingCompleted || 0} / 5 கேள்விகள் முடிவடைந்தன • +30 XP`
+                      : `${progressState?.readingCompleted || 0} / 5 exercises completed • +30 XP`}
                   </Text>
 
                   {/* Goal Progress Section */}
@@ -208,7 +208,7 @@ export default function HomeScreen() {
                   <LearnlyButton
                     label={selectedLanguage === 'ta' ? 'பயிற்சியைத் தொடங்கு ▶' : 'Continue Learning ▶'}
                     onPress={handleReadingPress}
-                    variant="primary"
+                    variant="outline"
                     style={styles.heroCta}
                   />
                 </View>
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
   },
   heroCta: {
     backgroundColor: '#FFFFFF',
-    borderBottomColor: '#CBD5E1',
+    borderColor: '#FFFFFF',
   },
   sectionHeading: {
     fontSize: 20,
