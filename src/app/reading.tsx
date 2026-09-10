@@ -102,6 +102,8 @@ export default function ReadingScreen() {
       setMicState('REQUESTING');
       setEmptyTranscriptWarning(null);
       setApiError(null);
+      setAssessmentResult(null);
+      setUserTranscript(null);
 
       // Check existing recording permission
       const currentPerm = await getRecordingPermissionsAsync();
@@ -128,7 +130,8 @@ export default function ReadingScreen() {
 
   /**
    * 2. stopReading()
-   * Stops audio recorder, sends recording URI to STT server endpoint, and updates transcript.
+   * Stops audio recorder, sends recording URI to STT server endpoint, updates transcript,
+   * AND IMMEDIATELY invokes assessReading without extra clicks.
    */
   const stopReading = async () => {
     try {
@@ -161,7 +164,12 @@ export default function ReadingScreen() {
             : 'Could not hear clearly. Please try speaking again! 🎤'
         );
       } else {
-        handleTranscript(realTranscript.trim());
+        const trimmed = realTranscript.trim();
+        setUserTranscript(trimmed);
+        setEmptyTranscriptWarning(null);
+
+        // Immediately trigger assessment!
+        await submitAssessment(trimmed);
       }
     } catch (error: any) {
       console.error('Failed to transcribe audio:', error);
@@ -175,19 +183,7 @@ export default function ReadingScreen() {
   };
 
   /**
-   * 3. handleTranscript(transcript)
-   * STT Integration Point: Receives transcript string from STT, stores in state,
-   * and clears previous assessment/warning messages.
-   */
-  const handleTranscript = (transcript: string) => {
-    setUserTranscript(transcript);
-    setEmptyTranscriptWarning(null);
-    setAssessmentResult(null);
-    setApiError(null);
-  };
-
-  /**
-   * 4. submitAssessment(transcript)
+   * 3. submitAssessment(transcript)
    * Validates transcript and sends payload to POST /api/assess
    */
   const submitAssessment = async (transcript: string | null) => {
@@ -488,27 +484,22 @@ export default function ReadingScreen() {
                   accessibilityLabel="Tap to read aloud"
                 >
                   <Text style={styles.micEmoji}>
-                    {micState === 'REQUESTING' || micState === 'TRANSCRIBING' || isLoadingNext ? '⏳' : micState === 'DENIED' ? '🔒' : '🎤'}
+                    {micState === 'REQUESTING' || micState === 'TRANSCRIBING' || isLoadingNext || isAssessing ? '⏳' : micState === 'DENIED' ? '🔒' : '🎤'}
                   </Text>
                 </Pressable>
 
-                {/* Primary Button Label */}
+                {/* Clear Status Labels */}
                 <Text style={[styles.micStatusText, { color: theme.text }]}>
-                  {micState === 'IDLE' && (lang === 'ta' ? 'பேசத் தட்டவும்' : 'Tap to Read')}
+                  {micState === 'IDLE' && !isAssessing && !assessmentResult && (lang === 'ta' ? 'பேசத் தட்டவும் 🎤' : 'Tap to Read 🎤')}
                   {micState === 'REQUESTING' && (lang === 'ta' ? 'அணுகல் கேட்கப்படுகிறது...' : 'Requesting microphone access...')}
                   {micState === 'LISTENING' && (lang === 'ta' ? 'கேட்கிறது... (நிறுத்த தட்டவும்)' : 'Listening... (Tap to stop)')}
-                  {micState === 'TRANSCRIBING' && (lang === 'ta' ? 'பேச்சு செயலாக்கப்படுகிறது...' : 'Processing your speech...')}
-                  {micState === 'READY' && (lang === 'ta' ? '🎤 மைக்ரோஃபோன் தயார்' : '🎤 Microphone ready')}
+                  {micState === 'TRANSCRIBING' && (lang === 'ta' ? 'பேச்சு செயலாக்கப்படுகிறது...' : 'Transcribing...')}
+                  {isAssessing && (lang === 'ta' ? 'உங்கள் வாசிப்பு சரிபார்க்கப்படுகிறது...' : 'Analyzing your reading...')}
+                  {!isAssessing && assessmentResult && (lang === 'ta' ? 'மதிப்பீட்டு முடிவு 👇' : 'Assessment Result 👇')}
                   {micState === 'DENIED' && (lang === 'ta' ? 'மைக்ரோஃபோன் அனுமதி தேவை' : 'Microphone permission needed')}
                 </Text>
 
                 {/* Status Banner / Permission Result */}
-                {micState === 'READY' && !userTranscript && (
-                  <View style={styles.permSuccessBanner}>
-                    <Text style={styles.permSuccessText}>Microphone ready 🎤</Text>
-                  </View>
-                )}
-
                 {micState === 'DENIED' && (
                   <View style={styles.permDeniedBanner}>
                     <Text style={styles.permDeniedText}>
@@ -553,29 +544,55 @@ export default function ReadingScreen() {
                   <Text style={styles.loadingText}>
                     {lang === 'ta'
                       ? 'உங்கள் வாசிப்பு சரிபார்க்கப்படுகிறது...'
-                      : 'Checking your reading...'}
+                      : 'Analyzing your reading...'}
                   </Text>
                 </View>
               )}
 
-              {/* API Network / Server Error Banner */}
+              {/* API Network / Server Error Banner with Retry */}
               {apiError && (
                 <View style={styles.errorBanner}>
                   <Text style={styles.errorText}>{apiError}</Text>
+                  {userTranscript && (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.retryButton,
+                        { marginTop: 8, alignSelf: 'center' },
+                        pressed && styles.buttonPressed,
+                      ]}
+                      onPress={() => submitAssessment(userTranscript)}
+                    >
+                      <Text style={styles.retryButtonText}>
+                        {lang === 'ta' ? 'மீண்டும் முயற்சிக்கவும்' : 'Retry Assessment'}
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
               )}
 
               {/* Real Backend Assessment Results Card */}
               {assessmentResult && (
                 <View style={[styles.assessmentCard, { backgroundColor: theme.backgroundElement }]}>
-                  <Text style={[styles.assessmentHeader, { color: theme.text }]}>
-                    AI Reading Assessment
+                  {/* Child-Friendly Status Banner */}
+                  <Text
+                    style={[
+                      styles.assessmentStatusHeader,
+                      { color: assessmentResult.needsPractice ? '#D97706' : '#059669' },
+                    ]}
+                  >
+                    {assessmentResult.needsPractice
+                      ? lang === 'ta'
+                        ? 'மீண்டும் பயிற்சி செய்வோம் 💪'
+                        : "Let's practice this skill again 💪"
+                      : lang === 'ta'
+                      ? 'அற்புதம்! 🎉'
+                      : 'Great job! 🎉'}
                   </Text>
 
                   {/* Primary Metrics Row */}
                   <View style={styles.metricsRow}>
                     <View style={styles.metricItem}>
-                      <Text style={styles.metricValue}>{assessmentResult.score}</Text>
+                      <Text style={styles.metricValue}>{assessmentResult.score}/100</Text>
                       <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Score</Text>
                     </View>
                     <View style={styles.metricItem}>
@@ -594,13 +611,7 @@ export default function ReadingScreen() {
                       Skill: <Text style={{ color: theme.text, fontWeight: '700' }}>{assessmentResult.skill}</Text>
                     </Text>
                     <Text style={[styles.detailText, { color: theme.textSecondary }]}>
-                      Needs Practice:{' '}
-                      <Text style={{ color: assessmentResult.needsPractice ? '#EA4335' : '#34A853', fontWeight: '700' }}>
-                        {assessmentResult.needsPractice ? 'Yes' : 'No'}
-                      </Text>
-                    </Text>
-                    <Text style={[styles.detailText, { color: theme.textSecondary }]}>
-                      Next difficulty:{' '}
+                      Next level:{' '}
                       <Text style={{ color: '#4C6EF5', fontWeight: '700' }}>
                         {formatDifficulty(assessmentResult.nextDifficulty)}
                       </Text>
@@ -617,28 +628,7 @@ export default function ReadingScreen() {
               )}
 
               {/* Dynamic Action Button */}
-              {!assessmentResult ? (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    isBusy && styles.buttonDisabled,
-                    (pressed || isBusy) && styles.buttonPressed,
-                  ]}
-                  onPress={() => submitAssessment(userTranscript)}
-                  disabled={isBusy}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.primaryButtonText}>
-                    {isAssessing
-                      ? lang === 'ta'
-                        ? 'சரிபார்க்கிறது...'
-                        : 'Checking...'
-                      : lang === 'ta'
-                      ? 'சரிபார்க்கவும்'
-                      : 'Check Reading'}
-                  </Text>
-                </Pressable>
-              ) : (
+              {assessmentResult && (
                 <Pressable
                   style={({ pressed }) => [
                     styles.primaryButton,
@@ -659,8 +649,8 @@ export default function ReadingScreen() {
                         ? 'முடிக்கவும்'
                         : 'Finish'
                       : lang === 'ta'
-                      ? 'அடுத்தது'
-                      : 'Continue'}
+                      ? 'அடுத்தது ➔'
+                      : 'Next ➔'}
                   </Text>
                 </Pressable>
               )}
@@ -812,20 +802,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  permSuccessBanner: {
-    marginTop: Spacing.two,
-    backgroundColor: '#E6F4EA',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#34A853',
-  },
-  permSuccessText: {
-    color: '#137333',
-    fontSize: 14,
-    fontWeight: '700',
-  },
   permDeniedBanner: {
     marginTop: Spacing.two,
     backgroundColor: '#FCE8E6',
@@ -844,7 +820,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.two,
   },
   retryButton: {
-    backgroundColor: '#EA4335',
+    backgroundColor: '#4C6EF5',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one + 2,
     borderRadius: 8,
@@ -922,10 +898,11 @@ const styles = StyleSheet.create({
     borderLeftWidth: 5,
     borderLeftColor: '#4C6EF5',
   },
-  assessmentHeader: {
-    fontSize: 16,
+  assessmentStatusHeader: {
+    fontSize: 20,
     fontWeight: '800',
     marginBottom: Spacing.three,
+    textAlign: 'center',
   },
   metricsRow: {
     flexDirection: 'row',
@@ -939,7 +916,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   metricValue: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#4C6EF5',
   },

@@ -291,9 +291,7 @@ export default function WritingScreen() {
                       ]}
                     >
                       {evaluationResult.correct
-                        ? lang === 'ta'
-                          ? '✓ சரி'
-                          : '✓ Correct'
+                        ? 'Correct! 🎉'
                         : lang === 'ta'
                         ? '✗ மீண்டும் முயற்சிக்கவும்'
                         : '✗ Try again'}
@@ -314,17 +312,36 @@ export default function WritingScreen() {
                             : styles.textError,
                         ]}
                       >
-                        Score: {evaluationResult.score}
+                        Score: {evaluationResult.score}/100
                       </Text>
                     </View>
                   </View>
 
                   <Text style={[styles.submittedLabel, { color: theme.textSecondary }]}>
-                    {lang === 'ta' ? 'சமர்ப்பிக்கப்பட்ட பதில்:' : 'Submitted Answer:'}
+                    {lang === 'ta' ? 'உங்கள் பதில்:' : 'Your Answer:'}
                   </Text>
-                  <Text style={[styles.submittedText, { color: theme.text }]}>
+                  <Text style={[styles.submittedText, { color: theme.text, marginBottom: 8 }]}>
                     "{submittedAnswer}"
                   </Text>
+
+                  {!evaluationResult.correct && (
+                    <>
+                      <Text style={[styles.submittedLabel, { color: theme.textSecondary }]}>
+                        {lang === 'ta' ? 'சரியான பதில்:' : 'Correct Answer:'}
+                      </Text>
+                      <Text style={[styles.submittedText, { color: '#137333', marginBottom: 8 }]}>
+                        "{currentExercise.expectedAnswer || currentExercise.prompt}"
+                      </Text>
+                    </>
+                  )}
+
+                  {currentExercise.hint && !evaluationResult.correct && (
+                    <View style={styles.hintBox}>
+                      <Text style={styles.hintText}>
+                        💡 {lang === 'ta' ? 'குறிப்பு:' : 'Hint:'} {currentExercise.hint}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -401,8 +418,8 @@ export default function WritingScreen() {
                         ? 'முடிக்கவும்'
                         : 'Finish'
                       : lang === 'ta'
-                      ? 'அடுத்த கேள்வி'
-                      : 'Continue'}
+                      ? 'அடுத்த கேள்வி ➔'
+                      : 'Next ➔'}
                   </Text>
                 </Pressable>
               )}
@@ -583,6 +600,19 @@ const styles = StyleSheet.create({
   submittedText: {
     fontSize: 17,
     fontWeight: '700',
+  },
+  hintBox: {
+    backgroundColor: '#FEF3C7',
+    padding: Spacing.three,
+    borderRadius: 12,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  hintText: {
+    color: '#92400E',
+    fontSize: 14,
+    fontWeight: '600',
   },
   feedbackBanner: {
     padding: Spacing.three,

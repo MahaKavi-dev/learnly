@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,7 +34,18 @@ export default function ProgressScreen() {
     return unsubscribe;
   }, []);
 
-  if (!progressState) return null;
+  if (!progressState) {
+    return (
+      <SafeAreaView
+        style={[styles.safeArea, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}
+      >
+        <ActivityIndicator color="#4C6EF5" size="large" />
+        <Text style={{ marginTop: 12, color: theme.textSecondary, fontWeight: '600' }}>
+          {lang === 'ta' ? 'முன்னேற்றம் ஏற்றப்படுகிறது...' : 'Loading progress...'}
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   const levelDetails = getLevelProgressDetails(progressState.xp);
   const badgesList = checkBadges(progressState);
