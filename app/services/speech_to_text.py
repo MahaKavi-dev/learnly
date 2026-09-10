@@ -4,15 +4,26 @@ import shutil
 import subprocess
 import tempfile
 import traceback
+from typing import Optional
 
-from google.api_core.client_options import ClientOptions
-from google.api_core.exceptions import GoogleAPICallError, PermissionDenied, Unauthenticated
-from google.auth.exceptions import DefaultCredentialsError
-from google.cloud import speech
+from faster_whisper import WhisperModel
 
 logger = logging.getLogger("learnly.stt")
 
 SUPPORTED_LANGUAGES = {"en-IN", "ta-IN", "en", "ta"}
+
+# Global singleton for lazy loading the local Whisper model
+_whisper_model: Optional[WhisperModel] = None
+
+def get_whisper_model() -> WhisperModel:
+    global _whisper_model
+    if _whisper_model is None:
+        model_name = os.getenv("WHISPER_MODEL", "tiny")
+        logger.info(f"Initializing local faster-whisper model: '{model_name}'...")
+        _whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        logger.info("Local faster-whisper model initialized successfully.")
+    return _whisper_model
+
 
 def _get_ffmpeg_binary() -> str | None:
     # 1. System PATH
@@ -27,21 +38,22 @@ def _get_ffmpeg_binary() -> str | None:
     except Exception:
         return None
 
+
 def _normalize_language(lang: str) -> str:
     if not lang or lang not in SUPPORTED_LANGUAGES:
         raise ValueError(f"Unsupported language '{lang}'. Must be 'en-IN' or 'ta-IN'.")
-    if lang == "en":
-        return "en-IN"
-    if lang == "ta":
-        return "ta-IN"
-    return lang
+    if lang in ("en", "en-IN"):
+        return "en"
+    if lang in ("ta", "ta-IN"):
+        return "ta"
+    return "en"
 
-def _convert_audio_to_wav(audio_bytes: bytes, input_extension: str = ".m4a") -> bytes:
+
+def _convert_audio_to_wav(audio_bytes: bytes, input_extension: str = ".m4a") -> str:
+    """Converts audio bytes into a 16kHz WAV temporary file for Whisper processing."""
     ffmpeg_bin = _get_ffmpeg_binary()
     if not ffmpeg_bin:
-        raise RuntimeError(
-            "Audio conversion requires ffmpeg, which is not available on the server."
-        )
+        raise RuntimeError("Audio conversion requires ffmpeg, which is not available on the server.")
 
     with tempfile.NamedTemporaryFile(suffix=input_extension, delete=False) as in_file:
         in_file.write(audio_bytes)
@@ -63,104 +75,51 @@ def _convert_audio_to_wav(audio_bytes: bytes, input_extension: str = ".m4a") -> 
         ]
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if res.returncode != 0:
-            err_msg = res.stderr.decode('utf-8', errors='ignore')
+            err_msg = res.stderr.decode("utf-8", errors="ignore")
             logger.error(f"ffmpeg conversion error: {err_msg}")
             raise RuntimeError(f"ffmpeg conversion failed: {err_msg}")
-        
-        with open(out_path, "rb") as f:
-            wav_bytes = f.read()
-        return wav_bytes
+
+        return out_path
     finally:
         if os.path.exists(in_path):
             try:
                 os.remove(in_path)
             except Exception:
                 pass
-        if os.path.exists(out_path):
-            try:
-                os.remove(out_path)
-            except Exception:
-                pass
+
 
 def transcribe_audio(file_bytes: bytes, filename: str, language: str) -> str:
     if not file_bytes or len(file_bytes) == 0:
         raise ValueError("Audio file is empty or missing.")
 
-    lang_code = _normalize_language(language)
-    ext = os.path.splitext(filename.lower())[1] if filename else ""
-    
-    needs_conversion = False
-    audio_bytes = file_bytes
-    encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
-    sample_rate = 16000
+    whisper_lang = _normalize_language(language)
+    ext = os.path.splitext(filename.lower())[1] if filename else ".m4a"
 
-    if ext in (".wav", ".wave"):
-        encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
-        sample_rate = 16000
-    elif ext == ".mp3":
-        encoding = speech.RecognitionConfig.AudioEncoding.MP3
-        sample_rate = 16000
-    elif ext == ".flac":
-        encoding = speech.RecognitionConfig.AudioEncoding.FLAC
-        sample_rate = 16000
-    elif ext in (".ogg", ".opus"):
-        encoding = speech.RecognitionConfig.AudioEncoding.OGG_OPUS
-        sample_rate = 16000
-    else:
-        needs_conversion = True
-
-    if needs_conversion:
-        audio_bytes = _convert_audio_to_wav(file_bytes, input_extension=ext or ".m4a")
-        encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
-        sample_rate = 16000
-
-    # Initialize Google Cloud Speech Client
-    client_kwargs = {}
-    quota_project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GOOGLE_QUOTA_PROJECT")
-    if quota_project:
-        client_kwargs["client_options"] = ClientOptions(quota_project_id=quota_project)
+    wav_path = _convert_audio_to_wav(file_bytes, input_extension=ext or ".m4a")
 
     try:
-        client = speech.SpeechClient(**client_kwargs)
-    except (DefaultCredentialsError, Exception) as err:
-        logger.error(f"Failed to initialize SpeechClient: {err}")
-        if isinstance(err, DefaultCredentialsError) or "credential" in str(err).lower():
-            raise PermissionError("Google Cloud credentials not configured on server.")
-        raise err
-
-    config = speech.RecognitionConfig(
-        encoding=encoding,
-        sample_rate_hertz=sample_rate,
-        language_code=lang_code,
-        enable_automatic_punctuation=True,
-    )
-    audio = speech.RecognitionAudio(content=audio_bytes)
-
-    try:
-        response = client.recognize(config=config, audio=audio)
-    except (PermissionDenied, Unauthenticated) as err:
-        logger.error(f"Google STT Permission/Auth error: {err}")
-        traceback.print_exc()
-        raise PermissionError(
-            "Google Speech-to-Text API permission denied. Ensure GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_CLOUD_PROJECT is configured."
+        model = get_whisper_model()
+        segments, info = model.transcribe(
+            wav_path,
+            language=whisper_lang,
+            beam_size=5,
+            vad_filter=True,
         )
-    except GoogleAPICallError as err:
-        logger.error(f"Google STT API error: {err}")
-        traceback.print_exc()
-        raise Exception(f"Google STT API error: {err.message}")
+
+        transcripts = [segment.text.strip() for segment in segments if segment.text.strip()]
+        transcript = " ".join(transcripts).strip()
+
+        logger.info(f"Local faster-whisper transcription complete ({whisper_lang}): '{transcript}'")
+        return transcript
+
     except Exception as err:
-        logger.error(f"Google STT unexpected error: {err}")
+        logger.error(f"Local faster-whisper STT failed: {err}")
         traceback.print_exc()
-        if "credential" in str(err).lower() or "auth" in str(err).lower():
-            raise PermissionError("Google Cloud credentials missing or invalid.")
-        raise Exception(f"Google STT request failed: {type(err).__name__}")
+        raise RuntimeError(f"Local Whisper STT transcription failed: {err}")
 
-    transcripts = []
-    for result in response.results:
-        if result.alternatives:
-            transcripts.append(result.alternatives[0].transcript)
-
-    transcript = " ".join(transcripts).strip()
-    if not transcript:
-        logger.info("Google STT returned no speech results.")
-    return transcript
+    finally:
+        if wav_path and os.path.exists(wav_path):
+            try:
+                os.remove(wav_path)
+            except Exception:
+                pass
