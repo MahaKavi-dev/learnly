@@ -14,6 +14,8 @@ import { DEMO_CHILD_ID } from '@/config/learner';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { WRITING_EXERCISES } from '@/data/exercises';
 import { useTheme } from '@/hooks/use-theme';
+import { recordExerciseCompletion } from '@/services/gamification';
+import { RewardResult } from '@/types/gamification';
 import { Language, WritingExercise } from '@/types/exercise';
 import { evaluateWritingAnswer, WritingEvaluation } from '@/utils/evaluation';
 
@@ -32,6 +34,7 @@ export default function WritingScreen() {
   const [userAnswer, setUserAnswer] = useState('');
   const [submittedAnswer, setSubmittedAnswer] = useState<string | null>(null);
   const [evaluationResult, setEvaluationResult] = useState<WritingEvaluation | null>(null);
+  const [earnedReward, setEarnedReward] = useState<RewardResult | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
 
   const currentExercise: WritingExercise = exerciseList[currentIndex];
@@ -39,33 +42,34 @@ export default function WritingScreen() {
 
   /**
    * submitWritingAnswer(answer)
-   * Evaluates user's answer locally and logs payload for future FastAPI / AI integration.
+   * Evaluates user's answer locally, calculates XP/streaks/badges, and prevents duplicate submissions.
    */
   const submitWritingAnswer = (answer: string) => {
-    if (!answer.trim()) return;
+    // Duplicate submit protection: ignore if answer is empty or already submitted
+    if (!answer.trim() || submittedAnswer !== null) return;
 
     // Evaluate answer with normalization and similarity scoring
     const result = evaluateWritingAnswer(answer, currentExercise.expectedAnswer, lang);
 
-    // Log payload structure for future FastAPI / Gemini AI endpoint
-    console.log('Submitting writing assessment payload:', {
-      exerciseId: currentExercise.id,
-      expectedText: currentExercise.expectedAnswer,
-      userTranscript: answer.trim(),
-      language: currentExercise.language,
+    // Record exercise completion for XP, level, streak, and badges
+    const reward = recordExerciseCompletion({
+      type: 'writing',
       difficulty: currentExercise.difficulty,
+      score: result.score,
       childId: DEMO_CHILD_ID,
       evaluation: result,
     });
 
     setSubmittedAnswer(answer.trim());
     setEvaluationResult(result);
+    setEarnedReward(reward);
   };
 
   const handleNext = () => {
     setUserAnswer('');
     setSubmittedAnswer(null);
     setEvaluationResult(null);
+    setEarnedReward(null);
 
     if (currentIndex < totalQuestions - 1) {
       setCurrentIndex((prev) => prev + 1);
@@ -79,6 +83,7 @@ export default function WritingScreen() {
     setUserAnswer('');
     setSubmittedAnswer(null);
     setEvaluationResult(null);
+    setEarnedReward(null);
     setIsCompleted(false);
   };
 
@@ -301,6 +306,25 @@ export default function WritingScreen() {
                   >
                     {evaluationResult.feedback}
                   </Text>
+                </View>
+              )}
+
+              {/* XP & Reward Feedback Banner */}
+              {earnedReward && earnedReward.xpEarned > 0 && (
+                <View style={styles.rewardBox}>
+                  <Text style={styles.rewardText}>
+                    ✨ +{earnedReward.xpEarned} XP Earned!
+                  </Text>
+                  {earnedReward.leveledUp && (
+                    <Text style={styles.levelUpText}>
+                      🎉 Level Up! Reached Level {earnedReward.newLevel}!
+                    </Text>
+                  )}
+                  {earnedReward.newBadges.map((badge) => (
+                    <Text key={badge.id} style={styles.badgeRewardText}>
+                      {badge.emoji} Unlocked: {badge.name}!
+                    </Text>
+                  ))}
                 </View>
               )}
 
@@ -599,6 +623,31 @@ const styles = StyleSheet.create({
   secondaryOutlineText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  rewardBox: {
+    backgroundColor: '#EEF2FF',
+    padding: Spacing.three,
+    borderRadius: 14,
+    marginBottom: Spacing.four,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    alignItems: 'center',
+    gap: 4,
+  },
+  rewardText: {
+    color: '#3730A3',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  levelUpText: {
+    color: '#059669',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  badgeRewardText: {
+    color: '#D97706',
+    fontSize: 13,
     fontWeight: '700',
   },
 });
