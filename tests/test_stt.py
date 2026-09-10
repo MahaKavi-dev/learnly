@@ -74,7 +74,7 @@ def test_transcribe_audio_mocked_whisper(monkeypatch):
             return [MockSegment("The sun is bright.")], None
 
     monkeypatch.setattr("app.services.speech_to_text._get_whisper_model", lambda: MockModel())
-    monkeypatch.setattr("app.services.speech_to_text._convert_audio_to_wav", lambda b, input_extension=".wav": b)
+    monkeypatch.setattr("app.services.speech_to_text._convert_audio_to_wav", lambda b, input_extension=".wav": "dummy_path.wav")
 
     res = transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
     assert res == "The sun is bright."
@@ -94,7 +94,7 @@ def test_transcribe_audio_filters_noise_segments(monkeypatch):
             ], None
 
     monkeypatch.setattr("app.services.speech_to_text._get_whisper_model", lambda: MockModel())
-    monkeypatch.setattr("app.services.speech_to_text._convert_audio_to_wav", lambda b, input_extension=".wav": b)
+    monkeypatch.setattr("app.services.speech_to_text._convert_audio_to_wav", lambda b, input_extension=".wav": "dummy_path.wav")
 
     res = transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
     assert res == "Valid spoken text"
