@@ -3,6 +3,7 @@ export interface AssessmentRequest {
   expectedText: string;
   userTranscript: string;
   language: string;
+  childId?: string;
 }
 
 export type NextDifficulty = 'easy' | 'medium' | 'hard';

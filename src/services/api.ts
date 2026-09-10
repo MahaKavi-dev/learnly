@@ -2,10 +2,12 @@ import { File } from 'expo-file-system';
 import { fetch } from 'expo/fetch';
 
 import { API_BASE_URL } from '@/config/api';
+import { DEMO_CHILD_ID } from '@/config/learner';
 import { AssessmentRequest, AssessmentResponse } from '@/types/assessment';
 
 /**
  * Sends a reading or writing exercise assessment payload to the FastAPI backend.
+ * Automatically attaches DEMO_CHILD_ID so attempts, progress, and streaks persist in Supabase.
  * 
  * Endpoint: POST /api/assess
  */
@@ -13,13 +15,18 @@ export async function assessReading(payload: AssessmentRequest): Promise<Assessm
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
+  const requestPayload: AssessmentRequest = {
+    ...payload,
+    childId: payload.childId || DEMO_CHILD_ID,
+  };
+
   try {
     const response = await globalThis.fetch(`${API_BASE_URL}/api/assess`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(requestPayload),
       signal: controller.signal,
     });
 
@@ -31,6 +38,7 @@ export async function assessReading(payload: AssessmentRequest): Promise<Assessm
 
     const data: AssessmentResponse = await response.json();
     return data;
+
   } catch (error: any) {
     clearTimeout(timeoutId);
     console.error('FastAPI assessment request failed:', error);
