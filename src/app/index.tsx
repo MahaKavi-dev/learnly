@@ -177,13 +177,29 @@ export default function HomeScreen() {
                   </Text>
                   <Text style={styles.heroSubtitle}>
                     {selectedLanguage === 'ta'
-                      ? '5 கேள்விகளை முடித்து +30 XP பெறுங்கள்!'
-                      : 'Complete 5 reading exercises & earn +30 XP!'}
+                      ? `${progressState?.readingCompleted || 0} / 5 கேள்விகள் முடிவடைந்தன • +30 XP`
+                      : `${progressState?.readingCompleted || 0} / 5 exercises completed • +30 XP`}
                   </Text>
+
+                  {/* Goal Progress Bar */}
+                  <View style={styles.goalProgressTrack}>
+                    <View
+                      style={[
+                        styles.goalProgressFill,
+                        {
+                          width: `${Math.min(
+                            100,
+                            ((progressState?.readingCompleted || 0) / 5) * 100
+                          )}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+
                   <LearnlyButton
                     label={selectedLanguage === 'ta' ? 'பயிற்சியைத் தொடங்கு ▶' : 'Continue Learning ▶'}
                     onPress={handleReadingPress}
-                    variant="primary"
+                    variant="outline"
                     style={styles.heroCta}
                   />
                 </View>
@@ -436,12 +452,24 @@ const styles = StyleSheet.create({
     color: '#E0E7FF',
     fontSize: 15,
     fontWeight: '500',
-    marginBottom: 20,
+    marginBottom: 12,
     lineHeight: 22,
+  },
+  goalProgressTrack: {
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderRadius: 4,
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  goalProgressFill: {
+    height: '100%',
+    backgroundColor: '#10B981',
+    borderRadius: 4,
   },
   heroCta: {
     backgroundColor: '#FFFFFF',
-    borderBottomColor: '#CBD5E1',
+    borderColor: '#FFFFFF',
   },
   sectionHeading: {
     fontSize: 20,

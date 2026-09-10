@@ -99,7 +99,9 @@ def test_assess_invalid_exercise_id(monkeypatch):
 
 from app.services.supabase import get_supabase
 
-VALID_CHILD_ID = "096e0481-844a-4a68-a589-e888f3781318"
+sb_init = get_supabase()
+child_rows = sb_init.table("children").select("id").limit(1).execute().data if sb_init else []
+VALID_CHILD_ID = child_rows[0]["id"] if child_rows else "096e0481-844a-4a68-a589-e888f3781318"
 EASY_EXERCISE_ID = "ef319c72-2dbd-4d7c-9726-32362d13c8dc"
 
 def test_assess_persistence_success(monkeypatch):
