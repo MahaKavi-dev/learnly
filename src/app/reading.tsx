@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -16,13 +16,14 @@ import {
 } from 'expo-audio';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DEMO_CHILD_ID } from '@/config/learner';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { READING_EXERCISES } from '@/data/exercises';
 import { useTheme } from '@/hooks/use-theme';
-import { assessReading, transcribeAudio } from '@/services/api';
+import { assessReading, fetchBackendExercises, transcribeAudio } from '@/services/api';
 import { recordExerciseCompletion } from '@/services/gamification';
 import { AssessmentResponse } from '@/types/assessment';
-import { Language, ReadingExercise } from '@/types/exercise';
+import { ExerciseItem, Language, ReadingExercise } from '@/types/exercise';
 
 type MicState = 'IDLE' | 'REQUESTING' | 'READY' | 'LISTENING' | 'TRANSCRIBING' | 'DENIED';
 
@@ -32,18 +33,18 @@ export default function ReadingScreen() {
   const params = useLocalSearchParams<{ lang?: string }>();
 
   // Determine current language from route param (defaults to English)
-  // Determine current language from route param (defaults to English)
   const lang: Language = params.lang === 'ta' ? 'ta' : 'en';
 
-  const exerciseList: ReadingExercise[] = READING_EXERCISES[lang];
+  const defaultLocalList: ReadingExercise[] = READING_EXERCISES[lang];
   const SESSION_TARGET_QUESTIONS = 5;
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const [questionCount, setQuestionCount] = useState(1);
   const [currentDifficulty, setCurrentDifficulty] = useState<number>(1);
-  const [usedIds, setUsedIds] = useState<Set<string>>(new Set([exerciseList[0]?.id]));
-  const [currentExercise, setCurrentExercise] = useState<ReadingExercise>(exerciseList[0]);
+  const [usedIds, setUsedIds] = useState<Set<string>>(new Set());
+  const [currentExercise, setCurrentExercise] = useState<ReadingExercise>(defaultLocalList[0]);
+  const [isLoadingNext, setIsLoadingNext] = useState(false);
 
   const [micState, setMicState] = useState<MicState>('IDLE');
   const [userTranscript, setUserTranscript] = useState<string | null>(null);
@@ -63,18 +64,34 @@ export default function ReadingScreen() {
     return 2;
   };
 
-  /**
-   * Helper to pick next exercise matching adaptive target difficulty
-   */
-  const pickAdaptiveExercise = (targetDiff: number, history: Set<string>): ReadingExercise => {
-    const matching = exerciseList.filter((ex) => ex.difficulty === targetDiff && !history.has(ex.id));
-    if (matching.length > 0) return matching[0];
-
-    const anyUnused = exerciseList.filter((ex) => !history.has(ex.id));
-    if (anyUnused.length > 0) return anyUnused[0];
-
-    return exerciseList[Math.floor(Math.random() * exerciseList.length)] || exerciseList[0];
-  };
+  // Initial load of exercises from backend for selected language
+  useEffect(() => {
+    let isMounted = true;
+    async function loadInitialExercise() {
+      try {
+        const fetched = await fetchBackendExercises({
+          language: lang,
+          type: 'reading',
+          difficulty: 'easy',
+        });
+        if (isMounted && fetched.length > 0) {
+          const initialEx = fetched[0] as ReadingExercise;
+          setCurrentExercise(initialEx);
+          setUsedIds(new Set([initialEx.id]));
+        } else if (isMounted) {
+          setUsedIds(new Set([defaultLocalList[0].id]));
+        }
+      } catch (err) {
+        if (isMounted) {
+          setUsedIds(new Set([defaultLocalList[0].id]));
+        }
+      }
+    }
+    loadInitialExercise();
+    return () => {
+      isMounted = false;
+    };
+  }, [lang]);
 
   /**
    * 1. startReading()
@@ -177,8 +194,8 @@ export default function ReadingScreen() {
     if (!transcript || !transcript.trim()) {
       setEmptyTranscriptWarning(
         lang === 'ta'
-          ? 'தயவுசெய்து முதலில் வாக்கியத்தை வாசிக்கவும்.'
-          : 'Please read the sentence first.'
+          ? 'தெளிவாக கேட்கவில்லை. தயவுசெய்து மீண்டும் பேசவும்! 🎤'
+          : 'Could not hear clearly. Please try speaking again! 🎤'
       );
       return;
     }
@@ -192,7 +209,8 @@ export default function ReadingScreen() {
         exerciseId: currentExercise.id,
         expectedText: currentExercise.text,
         userTranscript: transcript.trim(),
-        language: currentExercise.language,
+        language: currentExercise.language || lang,
+        childId: DEMO_CHILD_ID,
       });
 
       setAssessmentResult(result);
@@ -205,6 +223,7 @@ export default function ReadingScreen() {
         accuracy: result.accuracy,
         fluency: result.fluency,
         skill: result.skill,
+        childId: DEMO_CHILD_ID,
       });
     } catch (error: any) {
       console.error('FastAPI assessment call error:', error);
@@ -219,9 +238,9 @@ export default function ReadingScreen() {
   };
 
   /**
-   * Advances to the next question or completes exercise, using server's nextDifficulty
+   * Advances to the next question or completes exercise, using server's nextDifficulty & weak skill
    */
-  const handleNextQuestion = () => {
+  const handleNextQuestion = async () => {
     setUserTranscript(null);
     setEmptyTranscriptWarning(null);
     setApiError(null);
@@ -232,20 +251,63 @@ export default function ReadingScreen() {
       return;
     }
 
-    const nextDiffNum = assessmentResult
-      ? mapDifficultyToNum(assessmentResult.nextDifficulty)
-      : currentDifficulty;
+    const nextDiffStr: 'easy' | 'medium' | 'hard' = assessmentResult?.nextDifficulty || 'easy';
+    const nextSkill = assessmentResult?.skill;
+    const nextDiffNum = mapDifficultyToNum(nextDiffStr);
 
-    const nextExercise = pickAdaptiveExercise(nextDiffNum, usedIds);
+    setIsLoadingNext(true);
 
-    const newHistory = new Set(usedIds);
-    newHistory.add(nextExercise.id);
-    setUsedIds(newHistory);
+    try {
+      // 1. Try backend fetch matching both nextDifficulty and weak skill
+      let candidates: ExerciseItem[] = [];
+      if (nextSkill) {
+        candidates = await fetchBackendExercises({
+          language: lang,
+          type: 'reading',
+          difficulty: nextDiffStr,
+          skill: nextSkill,
+        });
+      }
 
-    setCurrentDifficulty(nextDiffNum);
-    setCurrentExercise(nextExercise);
-    setQuestionCount((prev) => prev + 1);
-    setAssessmentResult(null);
+      let unused = candidates.filter((ex) => !usedIds.has(ex.id));
+
+      // 2. If no unused matching skill, fetch by nextDifficulty tier
+      if (unused.length === 0) {
+        candidates = await fetchBackendExercises({
+          language: lang,
+          type: 'reading',
+          difficulty: nextDiffStr,
+        });
+        unused = candidates.filter((ex) => !usedIds.has(ex.id));
+      }
+
+      // 3. Fallback to local exercise list filtering if needed
+      if (unused.length === 0) {
+        const localMatches = defaultLocalList.filter(
+          (ex) => ex.difficulty === nextDiffNum && !usedIds.has(ex.id)
+        );
+        if (localMatches.length > 0) {
+          unused = localMatches;
+        } else {
+          unused = defaultLocalList.filter((ex) => !usedIds.has(ex.id));
+        }
+      }
+
+      const nextEx = (unused[0] || defaultLocalList[0]) as ReadingExercise;
+
+      const newHistory = new Set(usedIds);
+      newHistory.add(nextEx.id);
+      setUsedIds(newHistory);
+
+      setCurrentDifficulty(nextDiffNum);
+      setCurrentExercise(nextEx);
+      setQuestionCount((prev) => prev + 1);
+      setAssessmentResult(null);
+    } catch (err) {
+      console.error('Failed to pick next exercise:', err);
+    } finally {
+      setIsLoadingNext(false);
+    }
   };
 
   /**
@@ -254,30 +316,41 @@ export default function ReadingScreen() {
   const handleMicTap = () => {
     if (micState === 'LISTENING') {
       stopReading();
-    } else if (micState !== 'TRANSCRIBING' && micState !== 'REQUESTING') {
+    } else if (micState !== 'TRANSCRIBING' && micState !== 'REQUESTING' && !isAssessing && !isLoadingNext) {
       startReading();
     }
   };
 
-  const handleRestart = () => {
-    const initialEx = exerciseList[0];
-    setQuestionCount(1);
-    setCurrentDifficulty(1);
-    setUsedIds(new Set([initialEx.id]));
-    setCurrentExercise(initialEx);
-    setMicState('IDLE');
-    setUserTranscript(null);
-    setEmptyTranscriptWarning(null);
-    setAssessmentResult(null);
-    setApiError(null);
-    setIsCompleted(false);
+  const handleRestart = async () => {
+    setIsLoadingNext(true);
+    try {
+      const fetched = await fetchBackendExercises({
+        language: lang,
+        type: 'reading',
+        difficulty: 'easy',
+      });
+      const initialEx = (fetched[0] || defaultLocalList[0]) as ReadingExercise;
+      setQuestionCount(1);
+      setCurrentDifficulty(1);
+      setUsedIds(new Set([initialEx.id]));
+      setCurrentExercise(initialEx);
+      setMicState('IDLE');
+      setUserTranscript(null);
+      setEmptyTranscriptWarning(null);
+      setAssessmentResult(null);
+      setApiError(null);
+      setIsCompleted(false);
+    } finally {
+      setIsLoadingNext(false);
+    }
   };
-
 
   const formatDifficulty = (diff?: string) => {
     if (!diff) return 'Medium';
     return diff.charAt(0).toUpperCase() + diff.slice(1);
   };
+
+  const isBusy = isAssessing || micState === 'TRANSCRIBING' || isLoadingNext;
 
   return (
     <SafeAreaView
@@ -295,9 +368,10 @@ export default function ReadingScreen() {
               style={({ pressed }) => [
                 styles.backButton,
                 { backgroundColor: theme.backgroundElement },
-                pressed && styles.buttonPressed,
+                (pressed || isBusy) && styles.buttonPressed,
               ]}
-              onPress={() => router.back()}
+              onPress={() => !isBusy && router.back()}
+              disabled={isBusy}
               accessibilityRole="button"
               accessibilityLabel="Back to Home"
             >
@@ -386,9 +460,13 @@ export default function ReadingScreen() {
 
               {/* High-Readability Exercise Card */}
               <View style={[styles.sentenceCard, { backgroundColor: theme.backgroundElement }]}>
-                <Text style={[styles.sentenceText, { color: theme.text }]}>
-                  "{currentExercise.text}"
-                </Text>
+                {isLoadingNext ? (
+                  <ActivityIndicator color="#4C6EF5" size="large" />
+                ) : (
+                  <Text style={[styles.sentenceText, { color: theme.text }]}>
+                    "{currentExercise.text}"
+                  </Text>
+                )}
               </View>
 
               {/* Microphone Permission & Interaction Area */}
@@ -402,15 +480,15 @@ export default function ReadingScreen() {
                     micState === 'TRANSCRIBING' && styles.micRequesting,
                     micState === 'READY' && styles.micReady,
                     micState === 'DENIED' && styles.micDenied,
-                    pressed && styles.buttonPressed,
+                    (pressed || isBusy) && styles.buttonPressed,
                   ]}
                   onPress={handleMicTap}
-                  disabled={micState === 'REQUESTING' || micState === 'TRANSCRIBING' || isAssessing}
+                  disabled={micState === 'REQUESTING' || isBusy}
                   accessibilityRole="button"
                   accessibilityLabel="Tap to read aloud"
                 >
                   <Text style={styles.micEmoji}>
-                    {micState === 'REQUESTING' || micState === 'TRANSCRIBING' ? '⏳' : micState === 'DENIED' ? '🔒' : '🎤'}
+                    {micState === 'REQUESTING' || micState === 'TRANSCRIBING' || isLoadingNext ? '⏳' : micState === 'DENIED' ? '🔒' : '🎤'}
                   </Text>
                 </Pressable>
 
@@ -543,11 +621,11 @@ export default function ReadingScreen() {
                 <Pressable
                   style={({ pressed }) => [
                     styles.primaryButton,
-                    isAssessing && styles.buttonDisabled,
-                    pressed && styles.buttonPressed,
+                    isBusy && styles.buttonDisabled,
+                    (pressed || isBusy) && styles.buttonPressed,
                   ]}
                   onPress={() => submitAssessment(userTranscript)}
-                  disabled={isAssessing}
+                  disabled={isBusy}
                   accessibilityRole="button"
                 >
                   <Text style={styles.primaryButtonText}>
@@ -564,13 +642,19 @@ export default function ReadingScreen() {
                 <Pressable
                   style={({ pressed }) => [
                     styles.primaryButton,
-                    pressed && styles.buttonPressed,
+                    isLoadingNext && styles.buttonDisabled,
+                    (pressed || isLoadingNext) && styles.buttonPressed,
                   ]}
                   onPress={handleNextQuestion}
+                  disabled={isLoadingNext}
                   accessibilityRole="button"
                 >
                   <Text style={styles.primaryButtonText}>
-                    {questionCount === SESSION_TARGET_QUESTIONS
+                    {isLoadingNext
+                      ? lang === 'ta'
+                        ? 'ஏற்றுகிறது...'
+                        : 'Loading...'
+                      : questionCount === SESSION_TARGET_QUESTIONS
                       ? lang === 'ta'
                         ? 'முடிக்கவும்'
                         : 'Finish'

@@ -44,9 +44,9 @@ export const KNOWN_BADGES: BadgeDefinition[] = [
  * - 40 <= Score < 70 (Partial) -> 50% XP
  * - Score < 40 (Incorrect) -> 0 XP
  */
-export function calculateEarnedXP(difficulty?: string, score: number = 0): number {
+export function calculateEarnedXP(difficulty?: string | number, score: number = 0): number {
   let baseXP = 10;
-  const diffStr = (difficulty || '').toLowerCase().trim();
+  const diffStr = String(difficulty || '').toLowerCase().trim();
 
   if (diffStr === 'medium' || diffStr === '2') {
     baseXP = 20;
