@@ -70,6 +70,8 @@ export default function HomeScreen() {
   const currentLevel = progressState ? getLevelProgressDetails(progressState.xp).currentLevel : 1;
   const currentXP = progressState ? progressState.xp : 0;
   const currentStreak = progressState ? progressState.currentStreak : 0;
+  const rawCompleted = progressState ? progressState.readingCompleted : 0;
+  const goalCompleted = (rawCompleted % 5 === 0 && rawCompleted > 0) ? 5 : (rawCompleted % 5);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F8FAFC' }]}>
@@ -181,19 +183,26 @@ export default function HomeScreen() {
                       : `${progressState?.readingCompleted || 0} / 5 exercises completed • +30 XP`}
                   </Text>
 
-                  {/* Goal Progress Bar */}
-                  <View style={styles.goalProgressTrack}>
-                    <View
-                      style={[
-                        styles.goalProgressFill,
-                        {
-                          width: `${Math.min(
-                            100,
-                            ((progressState?.readingCompleted || 0) / 5) * 100
-                          )}%`,
-                        },
-                      ]}
-                    />
+                  {/* Goal Progress Section */}
+                  <View style={styles.goalProgressBox}>
+                    <View style={styles.goalProgressHeader}>
+                      <Text style={styles.goalProgressText}>
+                        {selectedLanguage === 'ta'
+                          ? `${goalCompleted} / 5 கேள்விகள் முடிந்தது`
+                          : `${goalCompleted} / 5 questions completed`}
+                      </Text>
+                      <Text style={styles.goalProgressPercent}>
+                        {Math.round((goalCompleted / 5) * 100)}%
+                      </Text>
+                    </View>
+                    <View style={styles.goalProgressTrack}>
+                      <View
+                        style={[
+                          styles.goalProgressFill,
+                          { width: `${(goalCompleted / 5) * 100}%` },
+                        ]}
+                      />
+                    </View>
                   </View>
 
                   <LearnlyButton
@@ -452,19 +461,39 @@ const styles = StyleSheet.create({
     color: '#E0E7FF',
     fontSize: 15,
     fontWeight: '500',
-    marginBottom: 12,
+    marginBottom: 14,
     lineHeight: 22,
+  },
+  goalProgressBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 18,
+  },
+  goalProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  goalProgressText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  goalProgressPercent: {
+    color: '#FEF3C7',
+    fontSize: 13,
+    fontWeight: '800',
   },
   goalProgressTrack: {
     height: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
     borderRadius: 4,
-    marginBottom: 20,
     overflow: 'hidden',
   },
   goalProgressFill: {
     height: '100%',
-    backgroundColor: '#10B981',
+    backgroundColor: '#34A853',
     borderRadius: 4,
   },
   heroCta: {

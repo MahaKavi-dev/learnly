@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+// @ts-ignore
 import { User } from '@supabase/supabase-js';
 
 import { BottomNavigation } from '@/components/ui/BottomNavigation';
@@ -41,7 +42,7 @@ export default function ProfileScreen() {
   const handleSignOut = async () => {
     try {
       await signOut();
-      router.replace('/signin');
+      router.replace('/signin' as any);
     } catch (err) {
       console.warn('Sign out error:', err);
     }

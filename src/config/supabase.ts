@@ -1,4 +1,6 @@
+// @ts-ignore
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// @ts-ignore
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL =

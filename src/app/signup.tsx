@@ -163,7 +163,7 @@ export default function SignUpScreen() {
 
               <View style={styles.footerRow}>
                 <Text style={styles.footerText}>Already have an account?</Text>
-                <Pressable onPress={() => router.push('/signin')}>
+                <Pressable onPress={() => router.push('/signin' as any)}>
                   <Text style={styles.linkText}>Sign In</Text>
                 </Pressable>
               </View>

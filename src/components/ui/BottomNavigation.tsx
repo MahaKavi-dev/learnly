@@ -31,13 +31,13 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ activeTab, l
         router.push({ pathname: '/', params });
         break;
       case 'practice':
-        router.push({ pathname: '/practice', params });
+        router.push({ pathname: '/practice' as any, params });
         break;
       case 'progress':
-        router.push({ pathname: '/progress', params });
+        router.push({ pathname: '/progress' as any, params });
         break;
       case 'profile':
-        router.push({ pathname: '/profile', params });
+        router.push({ pathname: '/profile' as any, params });
         break;
     }
   };
