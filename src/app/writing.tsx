@@ -10,6 +10,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DEMO_CHILD_ID } from '@/config/learner';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { WRITING_EXERCISES } from '@/data/exercises';
 import { useTheme } from '@/hooks/use-theme';
@@ -53,6 +54,7 @@ export default function WritingScreen() {
       userTranscript: answer.trim(),
       language: currentExercise.language,
       difficulty: currentExercise.difficulty,
+      childId: DEMO_CHILD_ID,
       evaluation: result,
     });
 
