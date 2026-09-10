@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { READING_EXERCISES } from '@/data/exercises';
 import { useTheme } from '@/hooks/use-theme';
+import { assessReading } from '@/services/api';
+import { AssessmentResponse } from '@/types/assessment';
 import { Language, ReadingExercise } from '@/types/exercise';
 
 type MicState = 'IDLE' | 'REQUESTING' | 'READY' | 'LISTENING' | 'DENIED';
@@ -32,6 +35,11 @@ export default function ReadingScreen() {
   const [micState, setMicState] = useState<MicState>('IDLE');
   const [userTranscript, setUserTranscript] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
+
+  // API State
+  const [isAssessing, setIsAssessing] = useState(false);
+  const [assessmentResult, setAssessmentResult] = useState<AssessmentResponse | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const currentExercise: ReadingExercise = exerciseList[currentIndex];
   const progressPercent = ((currentIndex + 1) / totalQuestions) * 100;
@@ -67,38 +75,62 @@ export default function ReadingScreen() {
 
   /**
    * 2. stopReading()
-   * Returns mic state to ready and simulates transcript capture.
+   * Returns mic state to ready and captures transcript.
    */
   const stopReading = () => {
     setMicState('READY');
-    // Simulates receiving transcript (will be replaced with real STT pipeline)
+    // Captures transcript (mock for now, will connect to STT stream in separate task)
     handleTranscript(currentExercise.text);
   };
 
   /**
    * 3. handleTranscript(transcript)
-   * Temporarily stores transcript in React state.
+   * Stores transcript in React state and resets previous API results.
    */
   const handleTranscript = (transcript: string) => {
     setUserTranscript(transcript);
+    setAssessmentResult(null);
+    setApiError(null);
   };
 
   /**
    * 4. submitAssessment(transcript)
-   * Prepares exercise evaluation payload and advances exercise sequence.
+   * Sends payload { exerciseId, expectedText, userTranscript, language } to POST /api/assess
    */
-  const submitAssessment = (transcript: string | null) => {
-    // Log assessment payload for future FastAPI / AI integration
-    console.log('Submitting exercise assessment:', {
-      exerciseId: currentExercise.id,
-      expectedText: currentExercise.text,
-      userTranscript: transcript,
-      language: currentExercise.language,
-      difficulty: currentExercise.difficulty,
-    });
+  const submitAssessment = async (transcript: string | null) => {
+    if (!transcript || isAssessing) return;
 
-    // Reset transcript for the next exercise
+    setIsAssessing(true);
+    setApiError(null);
+
+    try {
+      const result = await assessReading({
+        exerciseId: currentExercise.id,
+        expectedText: currentExercise.text,
+        userTranscript: transcript,
+        language: currentExercise.language,
+      });
+
+      setAssessmentResult(result);
+    } catch (error: any) {
+      console.error('FastAPI assessment call error:', error);
+      setApiError(
+        lang === 'ta'
+          ? 'இப்போது உங்கள் வாசிப்பை சரிபார்க்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.'
+          : "Couldn't check your reading right now. Please try again."
+      );
+    } finally {
+      setIsAssessing(false);
+    }
+  };
+
+  /**
+   * Advances to the next question or completes exercise
+   */
+  const handleNextQuestion = () => {
     setUserTranscript(null);
+    setAssessmentResult(null);
+    setApiError(null);
 
     if (currentIndex < totalQuestions - 1) {
       setCurrentIndex((prev) => prev + 1);
@@ -122,7 +154,14 @@ export default function ReadingScreen() {
     setCurrentIndex(0);
     setMicState('IDLE');
     setUserTranscript(null);
+    setAssessmentResult(null);
+    setApiError(null);
     setIsCompleted(false);
+  };
+
+  const formatDifficulty = (diff?: string) => {
+    if (!diff) return 'Medium';
+    return diff.charAt(0).toUpperCase() + diff.slice(1);
   };
 
   return (
@@ -250,7 +289,7 @@ export default function ReadingScreen() {
                     pressed && styles.buttonPressed,
                   ]}
                   onPress={handleMicTap}
-                  disabled={micState === 'REQUESTING'}
+                  disabled={micState === 'REQUESTING' || isAssessing}
                   accessibilityRole="button"
                   accessibilityLabel="Tap to read aloud"
                 >
@@ -268,7 +307,7 @@ export default function ReadingScreen() {
                   {micState === 'DENIED' && (lang === 'ta' ? 'மைக்ரோஃபோன் அனுமதி தேவை' : 'Microphone permission needed')}
                 </Text>
 
-                {/* Specific Status Banner / Permission Result */}
+                {/* Status Banner / Permission Result */}
                 {micState === 'READY' && !userTranscript && (
                   <View style={styles.permSuccessBanner}>
                     <Text style={styles.permSuccessText}>Microphone ready 🎤</Text>
@@ -293,7 +332,7 @@ export default function ReadingScreen() {
                 )}
               </View>
 
-              {/* Temporary Transcript Display Card */}
+              {/* Transcript Display Card */}
               {userTranscript && (
                 <View style={[styles.transcriptBox, { backgroundColor: theme.backgroundElement }]}>
                   <Text style={[styles.transcriptLabel, { color: theme.textSecondary }]}>
@@ -305,34 +344,118 @@ export default function ReadingScreen() {
                 </View>
               )}
 
-              {/* Encouraging Feedback Banner */}
-              <View style={styles.feedbackBanner}>
-                <Text style={styles.feedbackText}>
-                  {lang === 'ta'
-                    ? 'அற்புதம்! தொடர்ந்து படியுங்கள்! 🌟'
-                    : 'Great job! Keep going! 🌟'}
-                </Text>
-              </View>
+              {/* Loading State Banner */}
+              {isAssessing && (
+                <View style={styles.loadingBanner}>
+                  <ActivityIndicator color="#4C6EF5" size="small" style={{ marginRight: 8 }} />
+                  <Text style={styles.loadingText}>
+                    {lang === 'ta'
+                      ? 'உங்கள் வாசிப்பு சரிபார்க்கப்படுகிறது...'
+                      : 'Checking your reading...'}
+                  </Text>
+                </View>
+              )}
 
-              {/* Next / Submit Button */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  pressed && styles.buttonPressed,
-                ]}
-                onPress={() => submitAssessment(userTranscript)}
-                accessibilityRole="button"
-              >
-                <Text style={styles.primaryButtonText}>
-                  {currentIndex === totalQuestions - 1
-                    ? lang === 'ta'
-                      ? 'முடிக்கவும்'
-                      : 'Finish'
-                    : lang === 'ta'
-                    ? 'அடுத்தது'
-                    : 'Continue'}
-                </Text>
-              </Pressable>
+              {/* API Network / Server Error Banner */}
+              {apiError && (
+                <View style={styles.errorBanner}>
+                  <Text style={styles.errorText}>{apiError}</Text>
+                </View>
+              )}
+
+              {/* Real Backend Assessment Results Card */}
+              {assessmentResult && (
+                <View style={[styles.assessmentCard, { backgroundColor: theme.backgroundElement }]}>
+                  <Text style={[styles.assessmentHeader, { color: theme.text }]}>
+                    AI Reading Assessment
+                  </Text>
+
+                  {/* Primary Metrics Row */}
+                  <View style={styles.metricsRow}>
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricValue}>{assessmentResult.score}</Text>
+                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Score</Text>
+                    </View>
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricValue}>{assessmentResult.accuracy}%</Text>
+                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Accuracy</Text>
+                    </View>
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricValue}>{assessmentResult.fluency}%</Text>
+                      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Fluency</Text>
+                    </View>
+                  </View>
+
+                  {/* Secondary Details */}
+                  <View style={styles.detailsGrid}>
+                    <Text style={[styles.detailText, { color: theme.textSecondary }]}>
+                      Skill: <Text style={{ color: theme.text, fontWeight: '700' }}>{assessmentResult.skill}</Text>
+                    </Text>
+                    <Text style={[styles.detailText, { color: theme.textSecondary }]}>
+                      Needs Practice:{' '}
+                      <Text style={{ color: assessmentResult.needsPractice ? '#EA4335' : '#34A853', fontWeight: '700' }}>
+                        {assessmentResult.needsPractice ? 'Yes' : 'No'}
+                      </Text>
+                    </Text>
+                    <Text style={[styles.detailText, { color: theme.textSecondary }]}>
+                      Next difficulty:{' '}
+                      <Text style={{ color: '#4C6EF5', fontWeight: '700' }}>
+                        {formatDifficulty(assessmentResult.nextDifficulty)}
+                      </Text>
+                    </Text>
+                  </View>
+
+                  {/* AI Feedback */}
+                  <View style={styles.aiFeedbackBox}>
+                    <Text style={styles.aiFeedbackText}>
+                      💬 {assessmentResult.feedback}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Dynamic Action Button */}
+              {!assessmentResult ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    (!userTranscript || isAssessing) && styles.buttonDisabled,
+                    pressed && styles.buttonPressed,
+                  ]}
+                  onPress={() => submitAssessment(userTranscript)}
+                  disabled={!userTranscript || isAssessing}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.primaryButtonText}>
+                    {isAssessing
+                      ? lang === 'ta'
+                        ? 'சரிபார்க்கிறது...'
+                        : 'Checking...'
+                      : lang === 'ta'
+                      ? 'சரிபார்க்கவும்'
+                      : 'Check Reading'}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                  onPress={handleNextQuestion}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.primaryButtonText}>
+                    {currentIndex === totalQuestions - 1
+                      ? lang === 'ta'
+                        ? 'முடிக்கவும்'
+                        : 'Finish'
+                      : lang === 'ta'
+                      ? 'அடுத்தது'
+                      : 'Continue'}
+                  </Text>
+                </Pressable>
+              )}
             </View>
           )}
         </View>
@@ -540,19 +663,87 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontStyle: 'italic',
   },
-  feedbackBanner: {
+  loadingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF2FF',
+    padding: Spacing.three,
+    borderRadius: 12,
+    marginBottom: Spacing.four,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  loadingText: {
+    color: '#3730A3',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  errorBanner: {
+    backgroundColor: '#FCE8E6',
+    padding: Spacing.three,
+    borderRadius: 12,
+    marginBottom: Spacing.four,
+    borderWidth: 1,
+    borderColor: '#EA4335',
+  },
+  errorText: {
+    color: '#C5221F',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  assessmentCard: {
+    padding: Spacing.four,
+    borderRadius: 16,
+    marginBottom: Spacing.five,
+    borderLeftWidth: 5,
+    borderLeftColor: '#4C6EF5',
+  },
+  assessmentHeader: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: Spacing.three,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: Spacing.four,
+    backgroundColor: '#EEF2FF',
+    paddingVertical: Spacing.three,
+    borderRadius: 12,
+  },
+  metricItem: {
+    alignItems: 'center',
+  },
+  metricValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#4C6EF5',
+  },
+  metricLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  detailsGrid: {
+    gap: Spacing.one + 2,
+    marginBottom: Spacing.three,
+  },
+  detailText: {
+    fontSize: 14,
+  },
+  aiFeedbackBox: {
     backgroundColor: '#FEF3C7',
     padding: Spacing.three,
     borderRadius: 12,
-    marginBottom: Spacing.five,
     borderWidth: 1,
     borderColor: '#F59E0B',
   },
-  feedbackText: {
+  aiFeedbackText: {
     color: '#92400E',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    textAlign: 'center',
   },
   primaryButton: {
     backgroundColor: '#4C6EF5',
@@ -565,6 +756,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   buttonPressed: {
     opacity: 0.8,
