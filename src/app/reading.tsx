@@ -8,17 +8,22 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync } from 'expo-audio';
+import {
+  getRecordingPermissionsAsync,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  useAudioRecorder,
+} from 'expo-audio';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { READING_EXERCISES } from '@/data/exercises';
 import { useTheme } from '@/hooks/use-theme';
-import { assessReading } from '@/services/api';
+import { assessReading, transcribeAudio } from '@/services/api';
 import { AssessmentResponse } from '@/types/assessment';
 import { Language, ReadingExercise } from '@/types/exercise';
 
-type MicState = 'IDLE' | 'REQUESTING' | 'READY' | 'LISTENING' | 'DENIED';
+type MicState = 'IDLE' | 'REQUESTING' | 'READY' | 'LISTENING' | 'TRANSCRIBING' | 'DENIED';
 
 export default function ReadingScreen() {
   const theme = useTheme();
@@ -30,6 +35,8 @@ export default function ReadingScreen() {
 
   const exerciseList: ReadingExercise[] = READING_EXERCISES[lang];
   const totalQuestions = exerciseList.length;
+
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [micState, setMicState] = useState<MicState>('IDLE');
@@ -47,12 +54,13 @@ export default function ReadingScreen() {
 
   /**
    * 1. startReading()
-   * Verifies microphone permission via expo-audio and enters listening state.
+   * Verifies microphone permission via expo-audio, prepares recorder, and starts audio recording.
    */
   const startReading = async () => {
     try {
       setMicState('REQUESTING');
       setEmptyTranscriptWarning(null);
+      setApiError(null);
 
       // Check existing recording permission
       const currentPerm = await getRecordingPermissionsAsync();
@@ -65,24 +73,64 @@ export default function ReadingScreen() {
       }
 
       if (hasPermission) {
+        await audioRecorder.prepareToRecordAsync();
+        audioRecorder.record();
         setMicState('LISTENING');
       } else {
         setMicState('DENIED');
       }
     } catch (error) {
-      console.error('Failed to verify microphone permission:', error);
+      console.error('Failed to start audio recording:', error);
       setMicState('DENIED');
     }
   };
 
   /**
    * 2. stopReading()
-   * Returns mic state to ready and passes captured transcript to handleTranscript().
+   * Stops audio recorder, sends recording URI to STT server endpoint, and updates transcript.
    */
-  const stopReading = () => {
-    setMicState('READY');
-    // Captures transcript (mock for now; M2's STT pipeline will invoke handleTranscript)
-    handleTranscript(currentExercise.text);
+  const stopReading = async () => {
+    try {
+      setMicState('TRANSCRIBING');
+      setEmptyTranscriptWarning(null);
+      setApiError(null);
+
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
+
+      if (!uri) {
+        setMicState('READY');
+        setEmptyTranscriptWarning(
+          lang === 'ta'
+            ? 'தெளிவாக கேட்கவில்லை. தயவுசெய்து மீண்டும் பேசவும்! 🎤'
+            : 'Could not hear clearly. Please try speaking again! 🎤'
+        );
+        return;
+      }
+
+      // Send audio URI + language code to backend Speech-to-Text endpoint
+      const realTranscript = await transcribeAudio(uri, lang);
+
+      setMicState('READY');
+
+      if (!realTranscript || !realTranscript.trim()) {
+        setEmptyTranscriptWarning(
+          lang === 'ta'
+            ? 'தெளிவாக கேட்கவில்லை. தயவுசெய்து மீண்டும் பேசவும்! 🎤'
+            : 'Could not hear clearly. Please try speaking again! 🎤'
+        );
+      } else {
+        handleTranscript(realTranscript.trim());
+      }
+    } catch (error: any) {
+      console.error('Failed to transcribe audio:', error);
+      setMicState('READY');
+      setEmptyTranscriptWarning(
+        lang === 'ta'
+          ? 'தெளிவாக கேட்கவில்லை. தயவுசெய்து மீண்டும் பேசவும்! 🎤'
+          : 'Could not hear clearly. Please try speaking again! 🎤'
+      );
+    }
   };
 
   /**
@@ -158,7 +206,7 @@ export default function ReadingScreen() {
   const handleMicTap = () => {
     if (micState === 'LISTENING') {
       stopReading();
-    } else {
+    } else if (micState !== 'TRANSCRIBING' && micState !== 'REQUESTING') {
       startReading();
     }
   };
@@ -298,17 +346,18 @@ export default function ReadingScreen() {
                     micState === 'IDLE' && styles.micIdle,
                     micState === 'REQUESTING' && styles.micRequesting,
                     micState === 'LISTENING' && styles.micListening,
+                    micState === 'TRANSCRIBING' && styles.micRequesting,
                     micState === 'READY' && styles.micReady,
                     micState === 'DENIED' && styles.micDenied,
                     pressed && styles.buttonPressed,
                   ]}
                   onPress={handleMicTap}
-                  disabled={micState === 'REQUESTING' || isAssessing}
+                  disabled={micState === 'REQUESTING' || micState === 'TRANSCRIBING' || isAssessing}
                   accessibilityRole="button"
                   accessibilityLabel="Tap to read aloud"
                 >
                   <Text style={styles.micEmoji}>
-                    {micState === 'REQUESTING' ? '⏳' : micState === 'DENIED' ? '🔒' : '🎤'}
+                    {micState === 'REQUESTING' || micState === 'TRANSCRIBING' ? '⏳' : micState === 'DENIED' ? '🔒' : '🎤'}
                   </Text>
                 </Pressable>
 
@@ -317,6 +366,7 @@ export default function ReadingScreen() {
                   {micState === 'IDLE' && (lang === 'ta' ? 'பேசத் தட்டவும்' : 'Tap to Read')}
                   {micState === 'REQUESTING' && (lang === 'ta' ? 'அணுகல் கேட்கப்படுகிறது...' : 'Requesting microphone access...')}
                   {micState === 'LISTENING' && (lang === 'ta' ? 'கேட்கிறது... (நிறுத்த தட்டவும்)' : 'Listening... (Tap to stop)')}
+                  {micState === 'TRANSCRIBING' && (lang === 'ta' ? 'பேச்சு செயலாக்கப்படுகிறது...' : 'Processing your speech...')}
                   {micState === 'READY' && (lang === 'ta' ? '🎤 மைக்ரோஃபோன் தயார்' : '🎤 Microphone ready')}
                   {micState === 'DENIED' && (lang === 'ta' ? 'மைக்ரோஃபோன் அனுமதி தேவை' : 'Microphone permission needed')}
                 </Text>
