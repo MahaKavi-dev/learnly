@@ -15,6 +15,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="reading" />
         <Stack.Screen name="writing" />
+        <Stack.Screen name="progress" />
         <Stack.Screen name="explore" />
       </Stack>
     </ThemeProvider>

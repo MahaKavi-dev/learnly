@@ -48,6 +48,14 @@ export default function HomeScreen() {
     });
   };
 
+  const handleProgressPress = () => {
+    setFeatureMessage(null);
+    router.push({
+      pathname: '/progress' as any,
+      params: { lang: selectedLanguage || 'en' },
+    });
+  };
+
   const handleFeaturePress = (message: string) => {
     setFeatureMessage(message);
   };
@@ -251,7 +259,7 @@ export default function HomeScreen() {
                     { backgroundColor: theme.backgroundElement },
                     pressed && styles.cardPressed,
                   ]}
-                  onPress={() => handleFeaturePress('Progress tracking coming next')}
+                  onPress={handleProgressPress}
                   accessibilityRole="button"
                 >
                   <Text style={styles.featureIcon}>📊</Text>

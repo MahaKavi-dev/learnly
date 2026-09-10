@@ -20,6 +20,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { READING_EXERCISES } from '@/data/exercises';
 import { useTheme } from '@/hooks/use-theme';
 import { assessReading, transcribeAudio } from '@/services/api';
+import { recordExerciseCompletion } from '@/services/gamification';
 import { AssessmentResponse } from '@/types/assessment';
 import { Language, ReadingExercise } from '@/types/exercise';
 
@@ -172,6 +173,16 @@ export default function ReadingScreen() {
       });
 
       setAssessmentResult(result);
+
+      // Record reading exercise completion for XP, level, streak, and badges
+      recordExerciseCompletion({
+        type: 'reading',
+        difficulty: currentExercise.difficulty,
+        score: result.score,
+        accuracy: result.accuracy,
+        fluency: result.fluency,
+        skill: result.skill,
+      });
     } catch (error: any) {
       console.error('FastAPI assessment call error:', error);
       setApiError(
