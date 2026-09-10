@@ -32,14 +32,19 @@ export default function ReadingScreen() {
   const params = useLocalSearchParams<{ lang?: string }>();
 
   // Determine current language from route param (defaults to English)
+  // Determine current language from route param (defaults to English)
   const lang: Language = params.lang === 'ta' ? 'ta' : 'en';
 
   const exerciseList: ReadingExercise[] = READING_EXERCISES[lang];
-  const totalQuestions = exerciseList.length;
+  const SESSION_TARGET_QUESTIONS = 5;
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [questionCount, setQuestionCount] = useState(1);
+  const [currentDifficulty, setCurrentDifficulty] = useState<number>(1);
+  const [usedIds, setUsedIds] = useState<Set<string>>(new Set([exerciseList[0]?.id]));
+  const [currentExercise, setCurrentExercise] = useState<ReadingExercise>(exerciseList[0]);
+
   const [micState, setMicState] = useState<MicState>('IDLE');
   const [userTranscript, setUserTranscript] = useState<string | null>(null);
   const [emptyTranscriptWarning, setEmptyTranscriptWarning] = useState<string | null>(null);
@@ -50,8 +55,26 @@ export default function ReadingScreen() {
   const [assessmentResult, setAssessmentResult] = useState<AssessmentResponse | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  const currentExercise: ReadingExercise = exerciseList[currentIndex];
-  const progressPercent = ((currentIndex + 1) / totalQuestions) * 100;
+  const progressPercent = (questionCount / SESSION_TARGET_QUESTIONS) * 100;
+
+  const mapDifficultyToNum = (diff?: string): number => {
+    if (diff === 'easy') return 1;
+    if (diff === 'hard') return 3;
+    return 2;
+  };
+
+  /**
+   * Helper to pick next exercise matching adaptive target difficulty
+   */
+  const pickAdaptiveExercise = (targetDiff: number, history: Set<string>): ReadingExercise => {
+    const matching = exerciseList.filter((ex) => ex.difficulty === targetDiff && !history.has(ex.id));
+    if (matching.length > 0) return matching[0];
+
+    const anyUnused = exerciseList.filter((ex) => !history.has(ex.id));
+    if (anyUnused.length > 0) return anyUnused[0];
+
+    return exerciseList[Math.floor(Math.random() * exerciseList.length)] || exerciseList[0];
+  };
 
   /**
    * 1. startReading()
@@ -196,19 +219,33 @@ export default function ReadingScreen() {
   };
 
   /**
-   * Advances to the next question or completes exercise
+   * Advances to the next question or completes exercise, using server's nextDifficulty
    */
   const handleNextQuestion = () => {
     setUserTranscript(null);
     setEmptyTranscriptWarning(null);
-    setAssessmentResult(null);
     setApiError(null);
 
-    if (currentIndex < totalQuestions - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    } else {
+    if (questionCount >= SESSION_TARGET_QUESTIONS) {
+      setAssessmentResult(null);
       setIsCompleted(true);
+      return;
     }
+
+    const nextDiffNum = assessmentResult
+      ? mapDifficultyToNum(assessmentResult.nextDifficulty)
+      : currentDifficulty;
+
+    const nextExercise = pickAdaptiveExercise(nextDiffNum, usedIds);
+
+    const newHistory = new Set(usedIds);
+    newHistory.add(nextExercise.id);
+    setUsedIds(newHistory);
+
+    setCurrentDifficulty(nextDiffNum);
+    setCurrentExercise(nextExercise);
+    setQuestionCount((prev) => prev + 1);
+    setAssessmentResult(null);
   };
 
   /**
@@ -223,7 +260,11 @@ export default function ReadingScreen() {
   };
 
   const handleRestart = () => {
-    setCurrentIndex(0);
+    const initialEx = exerciseList[0];
+    setQuestionCount(1);
+    setCurrentDifficulty(1);
+    setUsedIds(new Set([initialEx.id]));
+    setCurrentExercise(initialEx);
     setMicState('IDLE');
     setUserTranscript(null);
     setEmptyTranscriptWarning(null);
@@ -231,6 +272,7 @@ export default function ReadingScreen() {
     setApiError(null);
     setIsCompleted(false);
   };
+
 
   const formatDifficulty = (diff?: string) => {
     if (!diff) return 'Medium';
@@ -322,8 +364,8 @@ export default function ReadingScreen() {
               <View style={styles.progressHeader}>
                 <Text style={[styles.progressText, { color: theme.textSecondary }]}>
                   {lang === 'ta'
-                    ? `கேள்வி ${currentExercise.questionNumber} / ${totalQuestions}`
-                    : `Question ${currentExercise.questionNumber} of ${totalQuestions}`}
+                    ? `கேள்வி ${questionCount} / ${SESSION_TARGET_QUESTIONS}`
+                    : `Question ${questionCount} of ${SESSION_TARGET_QUESTIONS}`}
                 </Text>
                 <View style={[styles.progressBarTrack, { backgroundColor: theme.backgroundElement }]}>
                   <View
@@ -528,7 +570,7 @@ export default function ReadingScreen() {
                   accessibilityRole="button"
                 >
                   <Text style={styles.primaryButtonText}>
-                    {currentIndex === totalQuestions - 1
+                    {questionCount === SESSION_TARGET_QUESTIONS
                       ? lang === 'ta'
                         ? 'முடிக்கவும்'
                         : 'Finish'
