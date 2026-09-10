@@ -1,7 +1,7 @@
+import { supabase } from '@/config/supabase';
 import {
   ExerciseResultPayload,
   RewardResult,
-  UserBadge,
   UserProgressState,
 } from '@/types/gamification';
 import {
@@ -10,7 +10,6 @@ import {
   calculateUpdatedStreak,
   checkBadges,
   formatDateISO,
-  KNOWN_BADGES,
 } from '@/utils/gamification';
 
 const DEFAULT_STATE: UserProgressState = {
@@ -30,6 +29,7 @@ const DEFAULT_STATE: UserProgressState = {
 };
 
 let currentState: UserProgressState = { ...DEFAULT_STATE };
+let activeUserId: string | null = null;
 const listeners = new Set<(state: UserProgressState) => void>();
 
 function notifyListeners() {
@@ -50,6 +50,70 @@ export function subscribeGamificationState(
   };
 }
 
+/**
+ * Loads user gamification metrics and progress from Supabase database.
+ */
+export async function loadUserGamificationState(userId: string): Promise<UserProgressState> {
+  activeUserId = userId;
+
+  if (!userId) {
+    currentState = { ...DEFAULT_STATE };
+    notifyListeners();
+    return currentState;
+  }
+
+  try {
+    // 1. Fetch learner profile
+    const { data: profile } = await supabase
+      .from('learner_profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    // 2. Fetch streak info
+    const { data: streakRow } = await supabase
+      .from('streaks')
+      .select('*')
+      .eq('child_id', userId)
+      .single();
+
+    if (profile || streakRow) {
+      currentState = {
+        xp: profile?.xp || 0,
+        level: profile?.level || calculateLevel(profile?.xp || 0),
+        currentStreak: streakRow?.current_streak || profile?.streak || 0,
+        longestStreak: streakRow?.longest_streak || profile?.streak || 0,
+        lastActivityDate: streakRow?.last_activity_date || null,
+        readingAccuracy: profile?.reading_accuracy || 0,
+        readingFluency: profile?.reading_fluency || 0,
+        readingCompleted: profile?.reading_completed || 0,
+        writingSpelling: profile?.spelling || 0,
+        writingSentence: profile?.sentence_formation || 0,
+        writingCompleted: profile?.writing_completed || 0,
+        weakSkill: profile?.weak_skill || null,
+        unlockedBadgeIds: [],
+      };
+
+      // Check badges for loaded state
+      const evaluatedBadges = checkBadges(currentState);
+      currentState.unlockedBadgeIds = evaluatedBadges
+        .filter((b) => b.unlocked)
+        .map((b) => b.id);
+
+      notifyListeners();
+      return currentState;
+    }
+  } catch (err) {
+    console.warn('Failed to load user gamification state from Supabase, using local:', err);
+  }
+
+  notifyListeners();
+  return currentState;
+}
+
+/**
+ * Records exercise completion and persists updated state to Supabase database.
+ */
 export function recordExerciseCompletion(payload: ExerciseResultPayload): RewardResult {
   const xpEarned = calculateEarnedXP(payload.difficulty, payload.score);
   const oldLevel = currentState.level;
@@ -107,7 +171,6 @@ export function recordExerciseCompletion(payload: ExerciseResultPayload): Reward
     weakSkill = 'Sentence Formation';
   }
 
-  // Intermediate state for checking badges
   const updatedTempState: UserProgressState = {
     ...currentState,
     xp: newXP,
@@ -141,6 +204,14 @@ export function recordExerciseCompletion(payload: ExerciseResultPayload): Reward
 
   notifyListeners();
 
+  // Asynchronously persist to Supabase PostgreSQL database
+  const targetUserId = payload.childId || activeUserId;
+  if (targetUserId) {
+    persistGamificationStateToSupabase(targetUserId, currentState).catch((err) =>
+      console.warn('Async Supabase state persist warning:', err)
+    );
+  }
+
   return {
     xpEarned,
     newLevel,
@@ -150,7 +221,48 @@ export function recordExerciseCompletion(payload: ExerciseResultPayload): Reward
   };
 }
 
+async function persistGamificationStateToSupabase(
+  userId: string,
+  state: UserProgressState
+) {
+  try {
+    // Upsert learner_profiles
+    await supabase.from('learner_profiles').upsert(
+      {
+        user_id: userId,
+        level: state.level,
+        xp: state.xp,
+        current_streak: state.currentStreak,
+        longest_streak: state.longestStreak,
+        reading_accuracy: state.readingAccuracy,
+        reading_fluency: state.readingFluency,
+        spelling: state.writingSpelling,
+        sentence_formation: state.writingSentence,
+        reading_completed: state.readingCompleted,
+        writing_completed: state.writingCompleted,
+        weak_skill: state.weakSkill,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    );
+
+    // Upsert streaks
+    await supabase.from('streaks').upsert(
+      {
+        child_id: userId,
+        current_streak: state.currentStreak,
+        longest_streak: state.longestStreak,
+        last_activity_date: state.lastActivityDate,
+      },
+      { onConflict: 'child_id' }
+    );
+  } catch (err) {
+    console.warn('Failed to persist gamification state to Supabase:', err);
+  }
+}
+
 export function resetGamificationState(): void {
+  activeUserId = null;
   currentState = { ...DEFAULT_STATE };
   notifyListeners();
 }

@@ -2,7 +2,7 @@ import { File } from 'expo-file-system';
 import { fetch } from 'expo/fetch';
 
 import { API_BASE_URL } from '@/config/api';
-import { DEMO_CHILD_ID } from '@/config/learner';
+import { getCurrentChildId } from '@/config/learner';
 import { READING_EXERCISES, WRITING_EXERCISES } from '@/data/exercises';
 import { AssessmentRequest, AssessmentResponse } from '@/types/assessment';
 import { ExerciseItem } from '@/types/exercise';
@@ -10,7 +10,7 @@ import { ExerciseItem } from '@/types/exercise';
 
 /**
  * Sends a reading or writing exercise assessment payload to the FastAPI backend.
- * Automatically attaches DEMO_CHILD_ID so attempts, progress, and streaks persist in Supabase.
+ * Automatically attaches authenticated user ID so attempts, progress, and streaks persist in Supabase.
  * 
  * Endpoint: POST /api/assess
  */
@@ -20,7 +20,7 @@ export async function assessReading(payload: AssessmentRequest): Promise<Assessm
 
   const requestPayload: AssessmentRequest = {
     ...payload,
-    childId: payload.childId || DEMO_CHILD_ID,
+    childId: payload.childId || getCurrentChildId(),
   };
 
   try {

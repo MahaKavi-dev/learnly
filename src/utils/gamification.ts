@@ -121,6 +121,11 @@ export function formatDateISO(date: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+function parseLocalDateOnly(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
 /**
  * Calculates updated streak values given previous state and activity date.
  */
@@ -138,17 +143,28 @@ export function calculateUpdatedStreak(
     };
   }
 
-  if (lastDateStr === todayStr) {
+  const lastDay = lastDateStr.slice(0, 10);
+  const todayDay = todayStr.slice(0, 10);
+
+  if (lastDay === todayDay) {
     // Same day: preserve current streak without double-incrementing
     return {
-      currentStreak,
-      longestStreak,
-      lastActivityDate: todayStr,
+      currentStreak: Math.max(currentStreak, 1),
+      longestStreak: Math.max(longestStreak, currentStreak, 1),
+      lastActivityDate: todayDay,
     };
   }
 
-  const lastDate = new Date(lastDateStr);
-  const todayDate = new Date(todayStr);
+  const lastDate = parseLocalDateOnly(lastDay);
+  const todayDate = parseLocalDateOnly(todayDay);
+  if (Number.isNaN(lastDate.getTime()) || Number.isNaN(todayDate.getTime())) {
+    return {
+      currentStreak: Math.max(currentStreak, 1),
+      longestStreak: Math.max(longestStreak, 1),
+      lastActivityDate: todayDay,
+    };
+  }
+
   const diffTime = todayDate.getTime() - lastDate.getTime();
   const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
 
@@ -158,14 +174,14 @@ export function calculateUpdatedStreak(
     return {
       currentStreak: newCurrent,
       longestStreak: Math.max(longestStreak, newCurrent),
-      lastActivityDate: todayStr,
+      lastActivityDate: todayDay,
     };
   } else if (diffDays > 1) {
     // Missed full day: reset current streak to 1, preserve longest streak
     return {
       currentStreak: 1,
-      longestStreak: Math.max(longestStreak, 1),
-      lastActivityDate: todayStr,
+      longestStreak: Math.max(longestStreak, currentStreak, 1),
+      lastActivityDate: todayDay,
     };
   }
 
@@ -196,15 +212,9 @@ export function checkBadges(state: UserProgressState): UserBadge[] {
         unlocked = true;
       } else if (def.id === 'xp_champion' && state.xp >= 200) {
         unlocked = true;
-      } else if (
-        def.id === 'writing_star' &&
-        (state.writingCompleted >= 5 || state.writingSpelling >= 90)
-      ) {
+      } else if (def.id === 'writing_star' && state.writingCompleted >= 5) {
         unlocked = true;
-      } else if (
-        def.id === 'reading_star' &&
-        (state.readingCompleted >= 5 || state.readingAccuracy >= 90)
-      ) {
+      } else if (def.id === 'reading_star' && state.readingCompleted >= 5) {
         unlocked = true;
       }
     }

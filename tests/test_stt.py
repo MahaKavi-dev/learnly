@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 from app.main import app
-from app.services.speech_to_text import _normalize_language, transcribe_audio
+from app.services.speech_to_text import _normalize_language, normalize_transcript_text, transcribe_audio
 
 client = TestClient(app)
 
@@ -27,6 +27,12 @@ def test_normalize_language():
     assert _normalize_language("ta-IN") == "ta"
     assert _normalize_language("en") == "en"
     assert _normalize_language("ta") == "ta"
+
+def test_normalize_transcript_text():
+    assert normalize_transcript_text("  The   sun   is bright. \n ") == "The sun is bright."
+    # Tamil Unicode NFC test
+    tamil_text = "பூனை   ஓடுகிறது"
+    assert normalize_transcript_text(tamil_text, "ta") == "பூனை ஓடுகிறது"
 
 def test_stt_response_shape(monkeypatch):
     def mock_transcribe_audio(file_bytes, filename, language):
@@ -58,14 +64,38 @@ def test_stt_no_speech_handling(monkeypatch):
 
 def test_transcribe_audio_mocked_whisper(monkeypatch):
     class MockSegment:
-        def __init__(self, text):
+        def __init__(self, text, no_speech_prob=0.01, avg_logprob=-0.2):
             self.text = text
+            self.no_speech_prob = no_speech_prob
+            self.avg_logprob = avg_logprob
 
     class MockModel:
-        def transcribe(self, audio_path, language, beam_size=5):
+        def transcribe(self, audio_path, language, beam_size=5, temperature=0.0, vad_filter=True, vad_parameters=None, condition_on_previous_text=False):
             return [MockSegment("The sun is bright.")], None
 
     monkeypatch.setattr("app.services.speech_to_text._get_whisper_model", lambda: MockModel())
+    monkeypatch.setattr("app.services.speech_to_text._convert_audio_to_wav", lambda b, input_extension=".wav": b)
 
     res = transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
     assert res == "The sun is bright."
+
+def test_transcribe_audio_filters_noise_segments(monkeypatch):
+    class MockSegment:
+        def __init__(self, text, no_speech_prob=0.0, avg_logprob=0.0):
+            self.text = text
+            self.no_speech_prob = no_speech_prob
+            self.avg_logprob = avg_logprob
+
+    class MockModel:
+        def transcribe(self, audio_path, language, **kwargs):
+            return [
+                MockSegment("Hallucinated noise text", no_speech_prob=0.85, avg_logprob=-0.1),
+                MockSegment("Valid spoken text", no_speech_prob=0.05, avg_logprob=-0.2),
+            ], None
+
+    monkeypatch.setattr("app.services.speech_to_text._get_whisper_model", lambda: MockModel())
+    monkeypatch.setattr("app.services.speech_to_text._convert_audio_to_wav", lambda b, input_extension=".wav": b)
+
+    res = transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
+    assert res == "Valid spoken text"
+

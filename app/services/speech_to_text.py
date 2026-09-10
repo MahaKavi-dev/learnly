@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import tempfile
 import traceback
+import unicodedata
 
 logger = logging.getLogger("learnly.stt")
 
@@ -32,6 +33,15 @@ def _normalize_language(lang: str) -> str:
     if lang in ("ta", "ta-IN"):
         return "ta"
     return lang
+
+def normalize_transcript_text(text: str, language: str = "en") -> str:
+    if not text:
+        return ""
+    # NFC normalization for Unicode characters (especially Tamil)
+    norm = unicodedata.normalize("NFC", text)
+    # Replace multiple whitespaces/newlines with single space
+    norm = " ".join(norm.split()).strip()
+    return norm
 
 def _convert_audio_to_wav(audio_bytes: bytes, input_extension: str = ".m4a") -> bytes:
     ffmpeg_bin = _get_ffmpeg_binary()
@@ -82,7 +92,7 @@ def _convert_audio_to_wav(audio_bytes: bytes, input_extension: str = ".m4a") -> 
 def _get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
-        model_name = os.getenv("WHISPER_MODEL", "tiny")
+        model_name = os.getenv("WHISPER_MODEL", "small")
         device = os.getenv("WHISPER_DEVICE", "cpu")
         compute_type = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
         logger.info(f"Loading local faster-whisper model '{model_name}' on device '{device}' with compute_type '{compute_type}'...")
@@ -119,9 +129,28 @@ def transcribe_audio(file_bytes: bytes, filename: str, language: str) -> str:
         temp_wav_path = temp_wav.name
 
     try:
-        segments, info = model.transcribe(temp_wav_path, language=whisper_lang, beam_size=5)
-        transcripts = [segment.text.strip() for segment in segments if segment.text]
-        transcript = " ".join(transcripts).strip()
+        segments, info = model.transcribe(
+            temp_wav_path,
+            language=whisper_lang,
+            beam_size=5,
+            temperature=0.0,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+            condition_on_previous_text=False
+        )
+        transcripts = []
+        for segment in segments:
+            # Filter noise / non-speech segments if stats present
+            no_speech_prob = getattr(segment, "no_speech_prob", 0.0)
+            avg_logprob = getattr(segment, "avg_logprob", 0.0)
+            if no_speech_prob > 0.6 or (avg_logprob < -1.5 and avg_logprob != 0.0):
+                logger.info(f"Skipping noise/hallucinated segment: text='{segment.text}', no_speech_prob={no_speech_prob}, avg_logprob={avg_logprob}")
+                continue
+            if segment.text and segment.text.strip():
+                transcripts.append(segment.text.strip())
+
+        raw_transcript = " ".join(transcripts).strip()
+        transcript = normalize_transcript_text(raw_transcript, whisper_lang)
         if not transcript:
             logger.info("Whisper STT returned empty transcript.")
         return transcript

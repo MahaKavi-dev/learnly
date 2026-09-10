@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -6,34 +6,47 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomNavigation } from '@/components/ui/BottomNavigation';
+import { LevelChip, StreakChip, XPChip } from '@/components/ui/Chips';
+import { LearnlyButton } from '@/components/ui/LearnlyButton';
+import { LearnlyCard } from '@/components/ui/LearnlyCard';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { subscribeGamificationState } from '@/services/gamification';
+import { UserProgressState } from '@/types/gamification';
+import { getLevelProgressDetails } from '@/utils/gamification';
 
 type Language = 'en' | 'ta';
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams<{ lang?: string }>();
 
-  // Simple local React state to manage language selection
-  const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null);
-  const [featureMessage, setFeatureMessage] = useState<string | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(
+    params.lang === 'ta' ? 'ta' : params.lang === 'en' ? 'en' : null
+  );
+  const [progressState, setProgressState] = useState<UserProgressState | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeGamificationState((state) => {
+      setProgressState(state);
+    });
+    return unsubscribe;
+  }, []);
 
   const handleSelectLanguage = (lang: Language) => {
     setSelectedLanguage(lang);
-    setFeatureMessage(null);
   };
 
   const handleResetLanguage = () => {
     setSelectedLanguage(null);
-    setFeatureMessage(null);
   };
 
   const handleReadingPress = () => {
-    setFeatureMessage(null);
     router.push({
       pathname: '/reading',
       params: { lang: selectedLanguage || 'en' },
@@ -41,7 +54,6 @@ export default function HomeScreen() {
   };
 
   const handleWritingPress = () => {
-    setFeatureMessage(null);
     router.push({
       pathname: '/writing',
       params: { lang: selectedLanguage || 'en' },
@@ -49,235 +61,202 @@ export default function HomeScreen() {
   };
 
   const handleProgressPress = () => {
-    setFeatureMessage(null);
     router.push({
-      pathname: '/progress' as any,
+      pathname: '/progress',
       params: { lang: selectedLanguage || 'en' },
     });
   };
 
-  const handleFeaturePress = (message: string) => {
-    setFeatureMessage(message);
-  };
+  const currentLevel = progressState ? getLevelProgressDetails(progressState.xp).currentLevel : 1;
+  const currentXP = progressState ? progressState.xp : 0;
+  const currentStreak = progressState ? progressState.currentStreak : 0;
 
   return (
-    <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: theme.background }]}
-      edges={['top', 'left', 'right']}
-    >
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F8FAFC' }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* App Branding Header */}
+          {/* Header Branding */}
           <View style={styles.header}>
             <View style={styles.logoBadge}>
               <Text style={styles.logoEmoji}>🌟</Text>
             </View>
-            <Text style={[styles.appName, { color: theme.text }]}>Learnly</Text>
-            <Text style={[styles.tagline, { color: theme.textSecondary }]}>
-              Learn • Practice • Grow
-            </Text>
+            <Text style={styles.appName}>Learnly</Text>
+            <Text style={styles.tagline}>Learn • Practice • Grow</Text>
           </View>
 
           {selectedLanguage === null ? (
-            /* --- LANGUAGE SELECTION SCREEN --- */
+            /* --- SCREEN 1: WELCOME / LANGUAGE SELECTION --- */
             <View style={styles.section}>
-              <Text style={[styles.heading, { color: theme.text }]}>
-                Choose your language
-              </Text>
-              <Text style={[styles.subheading, { color: theme.textSecondary }]}>
-                Select a language to get started!
-              </Text>
+              <LearnlyCard style={styles.welcomeCard}>
+                <Text style={styles.heading}>Choose your language</Text>
+                <Text style={styles.subheading}>
+                  Select your reading language to begin your journey!
+                </Text>
 
-              <View style={styles.cardGrid}>
-                {/* English Language Card */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.languageCard,
-                    { backgroundColor: theme.backgroundElement },
-                    pressed && styles.cardPressed,
-                  ]}
+                <View style={styles.cardGrid}>
+                  {/* English Selection Card */}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.languageCard,
+                      pressed && styles.cardPressed,
+                    ]}
+                    onPress={() => handleSelectLanguage('en')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Select English language"
+                  >
+                    <Text style={styles.flagEmoji}>🇬🇧</Text>
+                    <Text style={styles.languageTitle}>English</Text>
+                    <Text style={styles.languageSubtitle}>English Practice</Text>
+                  </Pressable>
+
+                  {/* Tamil Selection Card */}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.languageCard,
+                      pressed && styles.cardPressed,
+                    ]}
+                    onPress={() => handleSelectLanguage('ta')}
+                    accessibilityRole="button"
+                    accessibilityLabel="தமிழ் மொழியைத் தேர்ந்தெடுக்கவும்"
+                  >
+                    <Text style={styles.flagEmoji}>🇮🇳</Text>
+                    <Text style={styles.languageTitle}>தமிழ்</Text>
+                    <Text style={styles.languageSubtitle}>தமிழ் பயிற்சி</Text>
+                  </Pressable>
+                </View>
+
+                <LearnlyButton
+                  label="Start Learning 🚀"
                   onPress={() => handleSelectLanguage('en')}
-                  accessibilityRole="button"
-                  accessibilityLabel="Select English language"
-                >
-                  <Text style={styles.flagEmoji}>🇬🇧</Text>
-                  <Text style={[styles.languageTitle, { color: theme.text }]}>
-                    English
-                  </Text>
-                  <Text style={[styles.languageSubtitle, { color: theme.textSecondary }]}>
-                    English Practice
-                  </Text>
-                </Pressable>
-
-                {/* Tamil Language Card */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.languageCard,
-                    { backgroundColor: theme.backgroundElement },
-                    pressed && styles.cardPressed,
-                  ]}
-                  onPress={() => handleSelectLanguage('ta')}
-                  accessibilityRole="button"
-                  accessibilityLabel="தமிழ் மொழியைத் தேர்ந்தெடுக்கவும்"
-                >
-                  <Text style={styles.flagEmoji}>🇮🇳</Text>
-                  <Text style={[styles.languageTitle, { color: theme.text }]}>
-                    தமிழ்
-                  </Text>
-                  <Text style={[styles.languageSubtitle, { color: theme.textSecondary }]}>
-                    தமிழ் பயிற்சி
-                  </Text>
-                </Pressable>
-              </View>
+                  style={{ marginTop: 24 }}
+                />
+              </LearnlyCard>
             </View>
           ) : (
-            /* --- TEMPORARY HOME SCREEN --- */
+            /* --- SCREEN 2: HOME DASHBOARD --- */
             <View style={styles.section}>
-              {/* Selected Language Indicator Banner */}
-              <View style={[styles.langBanner, { backgroundColor: theme.backgroundElement }]}>
-                <View style={styles.langBannerInfo}>
-                  <Text style={styles.langBannerFlag}>
+              {/* Top User Bar */}
+              <View style={styles.userBar}>
+                <View style={styles.userInfo}>
+                  <Text style={styles.avatar}>👦</Text>
+                  <View>
+                    <Text style={styles.greeting}>
+                      {selectedLanguage === 'ta' ? 'வணக்கம் Alex! 👋' : 'Hi Alex! 👋'}
+                    </Text>
+                    <Text style={styles.userSubtext}>Ready to learn today?</Text>
+                  </View>
+                </View>
+                <Pressable style={styles.langPill} onPress={handleResetLanguage}>
+                  <Text style={styles.langPillFlag}>
                     {selectedLanguage === 'en' ? '🇬🇧' : '🇮🇳'}
                   </Text>
-                  <View>
-                    <Text style={[styles.langBannerLabel, { color: theme.textSecondary }]}>
-                      Selected Language / மொழி
-                    </Text>
-                    <Text style={[styles.langBannerValue, { color: theme.text }]}>
-                      {selectedLanguage === 'en' ? 'English' : 'தமிழ்'}
-                    </Text>
-                  </View>
-                </View>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.changeLangButton,
-                    pressed && styles.buttonPressed,
-                  ]}
-                  onPress={handleResetLanguage}
-                >
-                  <Text style={styles.changeLangText}>Change</Text>
+                  <Text style={styles.langPillText}>
+                    {selectedLanguage === 'en' ? 'EN' : 'TA'}
+                  </Text>
                 </Pressable>
               </View>
 
-              {/* Welcome Card */}
-              <View style={[styles.welcomeBox, { backgroundColor: '#4C6EF5' }]}>
-                <Text style={styles.welcomeTitle}>
-                  {selectedLanguage === 'ta' ? 'வணக்கம்!' : 'Welcome to Learnly!'}
-                </Text>
-                <Text style={styles.welcomeSubtitle}>
-                  {selectedLanguage === 'ta'
-                    ? 'வாருங்கள்! வாசித்தல் மற்றும் எழுதுதல் பயிற்சிகளைத் தொடங்குவோம்.'
-                    : 'Let’s practice reading and writing together!'}
-                </Text>
+              {/* Stats Chips Row */}
+              <View style={styles.chipsRow}>
+                <LevelChip level={currentLevel} />
+                <XPChip xp={currentXP} />
+                <StreakChip streak={currentStreak} />
               </View>
 
-              {/* Dynamic Language Practice Card */}
-              <View style={[styles.langPracticeCard, { backgroundColor: theme.backgroundElement }]}>
-                <Text style={[styles.langPracticeHeader, { color: theme.text }]}>
-                  {selectedLanguage === 'ta' ? 'தமிழ் உரை சான்று' : 'English Practice'}
-                </Text>
-                <View style={styles.langPracticeList}>
-                  {selectedLanguage === 'ta' ? (
-                    <>
-                      <Text style={[styles.langPracticeItem, { color: theme.text }]}>• "வணக்கம்!"</Text>
-                      <Text style={[styles.langPracticeItem, { color: theme.text }]}>• "பூனை ஓடுகிறது."</Text>
-                      <Text style={[styles.langPracticeItem, { color: theme.text }]}>• "அம்மா புத்தகம் படிக்கிறார்."</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={[styles.langPracticeItem, { color: theme.text }]}>• "Hello!"</Text>
-                      <Text style={[styles.langPracticeItem, { color: theme.text }]}>• "The cat is running."</Text>
-                      <Text style={[styles.langPracticeItem, { color: theme.text }]}>• "Mother is reading a book."</Text>
-                    </>
-                  )}
+              {/* Today's Goal Hero Card */}
+              <View style={styles.heroBanner}>
+                <View style={styles.heroContent}>
+                  <Text style={styles.heroTag}>TODAY'S GOAL</Text>
+                  <Text style={styles.heroTitle}>
+                    {selectedLanguage === 'ta'
+                      ? 'இன்றைய வாசிப்பு இலக்கு'
+                      : 'Daily Reading Practice'}
+                  </Text>
+                  <Text style={styles.heroSubtitle}>
+                    {selectedLanguage === 'ta'
+                      ? '5 கேள்விகளை முடித்து +30 XP பெறுங்கள்!'
+                      : 'Complete 5 reading exercises & earn +30 XP!'}
+                  </Text>
+                  <LearnlyButton
+                    label={selectedLanguage === 'ta' ? 'பயிற்சியைத் தொடங்கு ▶' : 'Continue Learning ▶'}
+                    onPress={handleReadingPress}
+                    variant="primary"
+                    style={styles.heroCta}
+                  />
                 </View>
               </View>
 
-              {/* Feature Tap Feedback Toast / Message */}
-              {featureMessage && (
-                <View style={styles.noticeBox}>
-                  <Text style={styles.noticeText}>💡 {featureMessage}</Text>
-                </View>
-              )}
-
-              {/* Three Main Feature Cards */}
-              <Text style={[styles.featuresHeading, { color: theme.text }]}>
-                Practice Modules
-              </Text>
-              <View style={styles.featuresList}>
-                {/* 📖 Reading Card */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.featureCard,
-                    { backgroundColor: theme.backgroundElement },
-                    pressed && styles.cardPressed,
-                  ]}
+              {/* Recommended Practice Modules */}
+              <Text style={styles.sectionHeading}>Practice Hub</Text>
+              <View style={styles.modulesGrid}>
+                {/* 📖 Reading Practice Card */}
+                <LearnlyCard
+                  accentColor="#4F46E5"
                   onPress={handleReadingPress}
-                  accessibilityRole="button"
+                  style={styles.moduleCard}
                 >
-                  <Text style={styles.featureIcon}>📖</Text>
-                  <View style={styles.featureInfo}>
-                    <Text style={[styles.featureTitle, { color: theme.text }]}>
-                      Reading
-                    </Text>
-                    <Text style={[styles.featureDesc, { color: theme.textSecondary }]}>
-                      Practice reading words & sentences
-                    </Text>
+                  <View style={styles.moduleRow}>
+                    <Text style={styles.moduleEmoji}>📖</Text>
+                    <View style={styles.moduleDetails}>
+                      <Text style={styles.moduleTitle}>
+                        {selectedLanguage === 'ta' ? 'வாசித்தல் பயிற்சி' : 'Reading Practice'}
+                      </Text>
+                      <Text style={styles.moduleDesc}>
+                        AI voice speech assessment & fluency check
+                      </Text>
+                    </View>
+                    <Text style={styles.arrowText}>➔</Text>
                   </View>
-                  <Text style={[styles.arrowIcon, { color: theme.textSecondary }]}>➔</Text>
-                </Pressable>
+                </LearnlyCard>
 
-                {/* ✍️ Writing Card */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.featureCard,
-                    { backgroundColor: theme.backgroundElement },
-                    pressed && styles.cardPressed,
-                  ]}
+                {/* ✍️ Writing Practice Card */}
+                <LearnlyCard
+                  accentColor="#8B5CF6"
                   onPress={handleWritingPress}
-                  accessibilityRole="button"
+                  style={styles.moduleCard}
                 >
-                  <Text style={styles.featureIcon}>✍️</Text>
-                  <View style={styles.featureInfo}>
-                    <Text style={[styles.featureTitle, { color: theme.text }]}>
-                      Writing
-                    </Text>
-                    <Text style={[styles.featureDesc, { color: theme.textSecondary }]}>
-                      Practice spelling & sentence writing
-                    </Text>
+                  <View style={styles.moduleRow}>
+                    <Text style={styles.moduleEmoji}>✍️</Text>
+                    <View style={styles.moduleDetails}>
+                      <Text style={styles.moduleTitle}>
+                        {selectedLanguage === 'ta' ? 'எழுதுதல் பயிற்சி' : 'Writing Practice'}
+                      </Text>
+                      <Text style={styles.moduleDesc}>
+                        Spelling & sentence formation exercises
+                      </Text>
+                    </View>
+                    <Text style={styles.arrowText}>➔</Text>
                   </View>
-                  <Text style={[styles.arrowIcon, { color: theme.textSecondary }]}>➔</Text>
-                </Pressable>
+                </LearnlyCard>
 
                 {/* 📊 Progress Card */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.featureCard,
-                    { backgroundColor: theme.backgroundElement },
-                    pressed && styles.cardPressed,
-                  ]}
+                <LearnlyCard
+                  accentColor="#10B981"
                   onPress={handleProgressPress}
-                  accessibilityRole="button"
+                  style={styles.moduleCard}
                 >
-                  <Text style={styles.featureIcon}>📊</Text>
-                  <View style={styles.featureInfo}>
-                    <Text style={[styles.featureTitle, { color: theme.text }]}>
-                      Progress
-                    </Text>
-                    <Text style={[styles.featureDesc, { color: theme.textSecondary }]}>
-                      Track learning streaks & stars
-                    </Text>
+                  <View style={styles.moduleRow}>
+                    <Text style={styles.moduleEmoji}>📊</Text>
+                    <View style={styles.moduleDetails}>
+                      <Text style={styles.moduleTitle}>
+                        {selectedLanguage === 'ta' ? 'எனது முன்னேற்றம்' : 'My Progress'}
+                      </Text>
+                      <Text style={styles.moduleDesc}>
+                        View accuracy, badges & level stats
+                      </Text>
+                    </View>
+                    <Text style={styles.arrowText}>➔</Text>
                   </View>
-                  <Text style={[styles.arrowIcon, { color: theme.textSecondary }]}>➔</Text>
-                </Pressable>
+                </LearnlyCard>
               </View>
             </View>
           )}
         </View>
       </ScrollView>
+      <BottomNavigation activeTab="home" lang={selectedLanguage || 'en'} />
     </SafeAreaView>
   );
 }
@@ -289,7 +268,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four,
-    paddingBottom: BottomTabInset + Spacing.five,
+    paddingBottom: 110,
     alignItems: 'center',
   },
   container: {
@@ -298,13 +277,13 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: Spacing.five,
+    marginBottom: Spacing.four,
   },
   logoBadge: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#EDE9FE',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.two,
@@ -313,185 +292,193 @@ const styles = StyleSheet.create({
     fontSize: 32,
   },
   appName: {
-    fontSize: 36,
+    fontSize: 34,
     fontWeight: '800',
+    color: '#0F172A',
     letterSpacing: 0.5,
   },
   tagline: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginTop: Spacing.one,
+    color: '#64748B',
+    marginTop: 2,
   },
   section: {
     width: '100%',
   },
+  welcomeCard: {
+    padding: 24,
+    alignItems: 'center',
+  },
   heading: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0F172A',
     textAlign: 'center',
-    marginBottom: Spacing.one,
+    marginBottom: 6,
   },
   subheading: {
     fontSize: 15,
+    color: '#475569',
     textAlign: 'center',
-    marginBottom: Spacing.four,
+    marginBottom: 20,
   },
   cardGrid: {
     flexDirection: 'row',
-    gap: Spacing.three,
-    justifyContent: 'center',
+    gap: 16,
+    width: '100%',
   },
   languageCard: {
     flex: 1,
-    paddingVertical: Spacing.five,
-    paddingHorizontal: Spacing.three,
+    backgroundColor: '#F1F5F9',
     borderRadius: 20,
+    padding: 20,
     alignItems: 'center',
-    minHeight: 160,
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    minHeight: 150,
   },
   cardPressed: {
-    opacity: 0.85,
+    opacity: 0.8,
     transform: [{ scale: 0.98 }],
   },
   flagEmoji: {
     fontSize: 48,
-    marginBottom: Spacing.two,
+    marginBottom: 10,
   },
   languageTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: Spacing.one,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
   },
   languageSubtitle: {
     fontSize: 13,
-    fontWeight: '500',
+    color: '#64748B',
+    marginTop: 2,
   },
-  langBanner: {
+  userBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: Spacing.three,
-    borderRadius: 16,
-    marginBottom: Spacing.four,
+    marginBottom: 16,
   },
-  langBannerInfo: {
+  userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
+    gap: 12,
   },
-  langBannerFlag: {
-    fontSize: 28,
+  avatar: {
+    fontSize: 40,
   },
-  langBannerLabel: {
-    fontSize: 12,
-    fontWeight: '500',
+  greeting: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
   },
-  langBannerValue: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  changeLangButton: {
-    backgroundColor: '#E2E8F0',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: 12,
-  },
-  buttonPressed: {
-    opacity: 0.7,
-  },
-  changeLangText: {
+  userSubtext: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
+    color: '#64748B',
+  },
+  langPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  langPillFlag: {
+    fontSize: 16,
+  },
+  langPillText: {
+    fontSize: 13,
+    fontWeight: '800',
     color: '#334155',
   },
-  welcomeBox: {
-    padding: Spacing.four,
-    borderRadius: 20,
-    marginBottom: Spacing.four,
+  chipsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 20,
   },
-  welcomeTitle: {
+  heroBanner: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 24,
+    shadowColor: '#4338CA',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  heroContent: {
+    width: '100%',
+  },
+  heroTag: {
+    color: '#FEF3C7',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  heroTitle: {
+    color: '#FFFFFF',
     fontSize: 24,
     fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: Spacing.one,
+    marginBottom: 6,
   },
-  welcomeSubtitle: {
+  heroSubtitle: {
+    color: '#E0E7FF',
     fontSize: 15,
     fontWeight: '500',
-    color: '#E0E7FF',
+    marginBottom: 20,
     lineHeight: 22,
   },
-  langPracticeCard: {
-    padding: Spacing.three,
-    borderRadius: 16,
-    marginBottom: Spacing.four,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4C6EF5',
+  heroCta: {
+    backgroundColor: '#FFFFFF',
+    borderBottomColor: '#CBD5E1',
   },
-  langPracticeHeader: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: Spacing.two,
+  sectionHeading: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 14,
   },
-  langPracticeList: {
-    gap: Spacing.one,
+  modulesGrid: {
+    gap: 14,
   },
-  langPracticeItem: {
-    fontSize: 16,
-    fontWeight: '600',
+  moduleCard: {
+    padding: 18,
   },
-  noticeBox: {
-    backgroundColor: '#FEF3C7',
-    padding: Spacing.three,
-    borderRadius: 12,
-    marginBottom: Spacing.four,
-    borderWidth: 1,
-    borderColor: '#F59E0B',
-  },
-  noticeText: {
-    color: '#92400E',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  featuresHeading: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: Spacing.three,
-  },
-  featuresList: {
-    gap: Spacing.three,
-  },
-  featureCard: {
+  moduleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.four,
-    borderRadius: 16,
-    gap: Spacing.three,
+    gap: 16,
   },
-  featureIcon: {
+  moduleEmoji: {
     fontSize: 32,
   },
-  featureInfo: {
+  moduleDetails: {
     flex: 1,
   },
-  featureTitle: {
+  moduleTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 2,
+    fontWeight: '800',
+    color: '#0F172A',
   },
-  featureDesc: {
+  moduleDesc: {
     fontSize: 13,
-    fontWeight: '500',
+    color: '#64748B',
+    marginTop: 2,
   },
-  arrowIcon: {
-    fontSize: 18,
-    fontWeight: '600',
+  arrowText: {
+    fontSize: 20,
+    color: '#4F46E5',
+    fontWeight: '800',
   },
 });
