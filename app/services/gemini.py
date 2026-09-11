@@ -17,7 +17,7 @@ def assess_with_gemini(req: AssessmentRequest) -> AssessmentResponse:
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
     client = genai.Client(api_key=api_key)
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
     
     from app.services.mock_assessment import extract_target_text
     target_exp = extract_target_text(req.expectedText)
@@ -56,10 +56,10 @@ Return only the structured GeminiAssessment JSON object.
             nextDifficulty="medium",
         )
     except Exception as exc:
-        print(f"Gemini evaluation failed with model {model}: {exc}. Retrying with gemini-flash-latest...")
+        print(f"Gemini evaluation failed with model {model}: {exc}. Retrying with gemini-flash-lite-latest...")
         try:
             response = client.models.generate_content(
-                model="gemini-flash-latest",
+                model="gemini-flash-lite-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
