@@ -105,14 +105,18 @@ def assess(request: AssessmentRequest):
     )
 
     # ---------------------------------------------------------
-    # 5. Use database expected answer
+    # 5. Extract clean target text for expected answer and transcript
     # ---------------------------------------------------------
     from app.services.mock_assessment import extract_target_text
-    raw_expected = exercise.get("expected_answer") or request.expectedText or exercise.get("content") or ""
+    raw_expected = request.expectedText or exercise.get("expected_answer") or exercise.get("content") or ""
     expected_text = extract_target_text(raw_expected)
+    cleaned_user_transcript = extract_target_text(request.userTranscript)
 
     assessment_request = request.model_copy(
-        update={"expectedText": expected_text}
+        update={
+            "expectedText": expected_text,
+            "userTranscript": cleaned_user_transcript,
+        }
     )
 
     # ---------------------------------------------------------

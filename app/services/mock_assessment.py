@@ -9,6 +9,8 @@ def extract_target_text(text: str) -> str:
         r"^(?:Find the letter|Read this word|Read this sentence|Read aloud|Read|Write the word for|Complete the word|Write the word|Write aloud)[:\s]+",
         r"^(?:எழுத்தைக் கண்டுபிடி|எழுத்தை கண்டுபிடி|சொல்லை படி|வாக்கியத்தை படி|சத்தமாக படி|சொல்லை எழுது|எழுத்தை எழுது)[:\s]+",
         r"^இந்த (?:சொல்லை|வாக்கியத்தை) படி[:\s]+",
+        r"[\s\.:]+(?:என்ற எழுத்தைக் கண்டுபிடி|என்ற எழுத்தை கண்டுபிடி|எழுத்தைக் கண்டுபிடி|எழுத்தை கண்டுபிடி)[\s\.]*$",
+        r"^(?:என்ற எழுத்தைக் கண்டுபிடி|என்ற எழுத்தை கண்டுபிடி)[\s\.:]+",
     ]
     cleaned = text.strip()
     for pat in patterns:

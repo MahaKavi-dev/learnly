@@ -1,62 +1,24 @@
 import logging
 import os
-import shutil
-import subprocess
-import tempfile
 import traceback
 import unicodedata
 from typing import Optional
 
-from faster_whisper import WhisperModel
+import httpx
 
 logger = logging.getLogger("learnly.stt")
 
 SUPPORTED_LANGUAGES = {"en-IN", "ta-IN", "en", "ta"}
-
-# Global singleton for lazy loading the local Whisper model
-_whisper_model: Optional[WhisperModel] = None
-
-def get_whisper_model() -> WhisperModel:
-    global _whisper_model
-    if _whisper_model is None:
-        model_name = os.getenv("WHISPER_MODEL", "tiny")
-        device = os.getenv("WHISPER_DEVICE", "cpu")
-        compute_type = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
-        logger.info(f"Initializing local faster-whisper model: '{model_name}' on '{device}' ({compute_type})...")
-        try:
-            _whisper_model = WhisperModel(model_name, device=device, compute_type=compute_type)
-            logger.info("Local faster-whisper model initialized successfully.")
-        except Exception as err:
-            logger.error(f"Failed to initialize local faster-whisper model '{model_name}': {err}")
-            traceback.print_exc()
-            raise RuntimeError(f"Failed to load local STT Whisper model: {err}")
-    return _whisper_model
-
-_get_whisper_model = get_whisper_model
-
-
-def _get_ffmpeg_binary() -> str | None:
-    # 1. System PATH
-    ffmpeg_bin = shutil.which("ffmpeg")
-    if ffmpeg_bin:
-        return ffmpeg_bin
-
-    # 2. Fallback to imageio_ffmpeg if available
-    try:
-        import imageio_ffmpeg
-        return imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception:
-        return None
 
 
 def _normalize_language(lang: str) -> str:
     if not lang or lang not in SUPPORTED_LANGUAGES:
         raise ValueError(f"Unsupported language '{lang}'. Must be 'en-IN' or 'ta-IN'.")
     if lang in ("en", "en-IN"):
-        return "en"
+        return "en-IN"
     if lang in ("ta", "ta-IN"):
-        return "ta"
-    return "en"
+        return "ta-IN"
+    return "en-IN"
 
 
 def normalize_transcript_text(text: str, language: str = "en") -> str:
@@ -69,90 +31,74 @@ def normalize_transcript_text(text: str, language: str = "en") -> str:
     return norm
 
 
-def _convert_audio_to_wav(audio_bytes: bytes, input_extension: str = ".m4a") -> str:
-    """Converts audio bytes into a 16kHz WAV temporary file for Whisper processing."""
-    ffmpeg_bin = _get_ffmpeg_binary()
-    if not ffmpeg_bin:
-        raise RuntimeError("Audio conversion requires ffmpeg, which is not available on the server.")
-
-    with tempfile.NamedTemporaryFile(suffix=input_extension, delete=False) as in_file:
-        in_file.write(audio_bytes)
-        in_path = in_file.name
-
-    out_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    out_path = out_file.name
-    out_file.close()
-
-    try:
-        cmd = [
-            ffmpeg_bin,
-            "-y",
-            "-i", in_path,
-            "-ac", "1",
-            "-ar", "16000",
-            "-f", "wav",
-            out_path
-        ]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if res.returncode != 0:
-            err_msg = res.stderr.decode("utf-8", errors="ignore")
-            logger.error(f"ffmpeg conversion error: {err_msg}")
-            raise RuntimeError(f"ffmpeg conversion failed: {err_msg}")
-
-        return out_path
-    finally:
-        if os.path.exists(in_path):
-            try:
-                os.remove(in_path)
-            except Exception:
-                pass
-
-
 def transcribe_audio(file_bytes: bytes, filename: str, language: str) -> str:
     if not file_bytes or len(file_bytes) == 0:
         raise ValueError("Audio file is empty or missing.")
 
-    whisper_lang = _normalize_language(language)
+    api_key = os.getenv("SARVAM_API_KEY")
+    if not api_key:
+        logger.error("SARVAM_API_KEY is not configured in backend environment.")
+        raise RuntimeError("SARVAM_API_KEY is missing on the server.")
+
+    lang_code = _normalize_language(language)
     ext = os.path.splitext(filename.lower())[1] if filename else ".m4a"
 
-    wav_path = _convert_audio_to_wav(file_bytes, input_extension=ext or ".m4a")
+    mime_map = {
+        ".wav": "audio/wav",
+        ".mp3": "audio/mp3",
+        ".m4a": "audio/x-m4a",
+        ".mp4": "audio/mp4",
+        ".aac": "audio/aac",
+        ".3gp": "audio/3gpp",
+        ".3gpp": "audio/3gpp",
+        ".ogg": "audio/ogg",
+    }
+    mime_type = mime_map.get(ext, "audio/x-m4a")
+
+    url = "https://api.sarvam.ai/speech-to-text"
+    headers = {
+        "api-subscription-key": api_key
+    }
+    files = {
+        "file": (filename or "recording.m4a", file_bytes, mime_type)
+    }
+    data = {
+        "model": "saaras:v4",
+        "language_code": lang_code,
+        "mode": "transcribe"
+    }
+
+    logger.info(f"STT Upload Received: filename='{filename}', bytes={len(file_bytes)}, lang_code='{lang_code}', mime='{mime_type}'")
 
     try:
-        model = _get_whisper_model()
-        segments, info = model.transcribe(
-            wav_path,
-            language=whisper_lang,
-            beam_size=5,
-            temperature=0.0,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
-            condition_on_previous_text=False
-        )
+        with httpx.Client(timeout=60.0) as client:
+            res = client.post(url, headers=headers, data=data, files=files)
 
-        transcripts = []
-        for segment in segments:
-            no_speech_prob = getattr(segment, "no_speech_prob", 0.0)
-            avg_logprob = getattr(segment, "avg_logprob", 0.0)
-            if no_speech_prob > 0.80 or (avg_logprob < -2.0 and avg_logprob != 0.0):
-                logger.info(f"Skipping noise/hallucinated segment: text='{segment.text}', no_speech_prob={no_speech_prob}, avg_logprob={avg_logprob}")
-                continue
-            if segment.text and segment.text.strip():
-                transcripts.append(segment.text.strip())
+        if res.status_code == 200:
+            res_json = res.json()
+            raw_transcript = res_json.get("transcript", "")
+            transcript = normalize_transcript_text(raw_transcript, "ta" if lang_code == "ta-IN" else "en")
+            logger.info(f"Sarvam AI STT Success ({lang_code}): '{transcript}'")
+            return transcript
+        elif res.status_code == 400:
+            logger.warning(f"Sarvam AI STT HTTP 400 Bad Request: {res.text}")
+            raise ValueError(f"Sarvam STT Bad Request: {res.text}")
+        elif res.status_code in (401, 403):
+            logger.error("Sarvam AI STT Authentication failed (401/403).")
+            raise RuntimeError("Sarvam STT Authentication failed. Check SARVAM_API_KEY configuration.")
+        elif res.status_code == 429:
+            logger.error("Sarvam AI STT Rate limit exceeded (429).")
+            raise RuntimeError("Sarvam STT rate limit exceeded. Please try again in a moment.")
+        else:
+            logger.error(f"Sarvam AI STT Error (HTTP {res.status_code}): {res.text}")
+            raise RuntimeError(f"Sarvam STT service error (HTTP {res.status_code}).")
 
-        raw_transcript = " ".join(transcripts).strip()
-        transcript = normalize_transcript_text(raw_transcript, whisper_lang)
-
-        logger.info(f"Local faster-whisper transcription complete ({whisper_lang}): '{transcript}'")
-        return transcript
-
+    except httpx.TimeoutException:
+        logger.error("Sarvam STT request timed out after 60s.")
+        raise RuntimeError("Sarvam STT request timed out (60s).")
+    except (ValueError, RuntimeError):
+        raise
     except Exception as err:
-        logger.error(f"Local faster-whisper STT failed: {err}")
+        logger.error(f"Sarvam STT request exception: {err}")
         traceback.print_exc()
-        raise RuntimeError(f"Local Whisper STT transcription failed: {err}")
-
-    finally:
-        if wav_path and os.path.exists(wav_path):
-            try:
-                os.remove(wav_path)
-            except Exception:
-                pass
+        raise RuntimeError(f"Sarvam STT failed: {err}")
