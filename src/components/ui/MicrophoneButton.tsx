@@ -66,28 +66,30 @@ export const MicrophoneButton: React.FC<MicrophoneButtonProps> = ({
 
   return (
     <View style={styles.container}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.button,
-          {
-            backgroundColor: styleConfig.bg,
-            borderColor: styleConfig.border,
-            borderBottomColor: styleConfig.depth,
-          },
-          pressed && !disabled && styles.pressed,
-          disabled && styles.disabled,
-        ]}
-        onPress={onPress}
-        disabled={disabled || isLoading}
-        accessibilityRole="button"
-        accessibilityLabel={styleConfig.label}
-      >
-        {isLoading ? (
-          <ActivityIndicator color={styleConfig.border} size="large" />
-        ) : (
-          <Text style={styles.emoji}>{styleConfig.emoji}</Text>
-        )}
-      </Pressable>
+      <View style={[styles.pulseRing, state === 'LISTENING' && styles.activePulse]}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.button,
+            {
+              backgroundColor: styleConfig.bg,
+              borderColor: styleConfig.border,
+              borderBottomColor: styleConfig.depth,
+            },
+            pressed && !disabled && styles.pressed,
+            disabled && styles.disabled,
+          ]}
+          onPress={onPress}
+          disabled={disabled || isLoading}
+          accessibilityRole="button"
+          accessibilityLabel={styleConfig.label}
+        >
+          {isLoading ? (
+            <ActivityIndicator color={styleConfig.border} size="large" />
+          ) : (
+            <Text style={styles.emoji}>{styleConfig.emoji}</Text>
+          )}
+        </Pressable>
+      </View>
       <Text style={styles.statusLabel}>{styleConfig.label}</Text>
     </View>
   );
@@ -97,6 +99,16 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     gap: 8,
+  },
+  pulseRing: {
+    padding: 6,
+    borderRadius: 60,
+    backgroundColor: 'transparent',
+  },
+  activePulse: {
+    backgroundColor: 'rgba(244, 63, 94, 0.15)',
+    borderWidth: 2,
+    borderColor: '#F43F5E',
   },
   button: {
     width: 96,
@@ -113,7 +125,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   pressed: {
-    transform: [{ translateY: 3 }],
+    transform: [{ translateY: 3 }, { scale: 0.96 }],
     borderBottomWidth: 3,
   },
   disabled: {
@@ -124,7 +136,8 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#0F172A',
+    letterSpacing: 0.2,
   },
 });

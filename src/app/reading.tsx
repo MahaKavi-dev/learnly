@@ -622,7 +622,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
     textAlign: 'center',
-    lineHeight: 38,
+    lineHeight: 40,
+    letterSpacing: 0.6,
   },
   micSection: {
     alignItems: 'center',
