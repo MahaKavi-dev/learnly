@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LanguageChip } from '@/components/ui/Chips';
 import { LearnlyButton } from '@/components/ui/LearnlyButton';
 import { LearnlyCard } from '@/components/ui/LearnlyCard';
+import { API_BASE_URL } from '@/config/api';
 import { getCurrentChildId } from '@/config/learner';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { WRITING_EXERCISES } from '@/data/exercises';
@@ -22,6 +23,11 @@ import { recordExerciseCompletion } from '@/services/gamification';
 import { Language, WritingExercise } from '@/types/exercise';
 import { RewardResult } from '@/types/gamification';
 import { evaluateWritingAnswer, WritingEvaluation } from '@/utils/evaluation';
+
+interface Point {
+  x: number;
+  y: number;
+}
 
 export default function WritingScreen() {
   const router = useRouter();
@@ -39,6 +45,42 @@ export default function WritingScreen() {
   const [earnedReward, setEarnedReward] = useState<RewardResult | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
 
+  // Handwriting Canvas State
+  const [paths, setPaths] = useState<Point[][]>([]);
+  const currentPath = useRef<Point[]>([]);
+  const [isRecognizing, setIsRecognizing] = useState(false);
+  const [handwritingError, setHandwritingError] = useState<string | null>(null);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !submittedAnswer && !isRecognizing,
+      onMoveShouldSetPanResponder: () => !submittedAnswer && !isRecognizing,
+      onPanResponderGrant: (evt) => {
+        if (submittedAnswer || isRecognizing) return;
+        const { locationX, locationY } = evt.nativeEvent;
+        currentPath.current = [{ x: locationX, y: locationY }];
+      },
+      onPanResponderMove: (evt) => {
+        if (submittedAnswer || isRecognizing) return;
+        const { locationX, locationY } = evt.nativeEvent;
+        currentPath.current.push({ x: locationX, y: locationY });
+        setPaths((prev) => [...prev.slice(0, -1), [...currentPath.current]]);
+      },
+      onPanResponderRelease: () => {
+        if (currentPath.current.length > 0) {
+          setPaths((prev) => [...prev, [...currentPath.current]]);
+          currentPath.current = [];
+        }
+      },
+    })
+  ).current;
+
+  const handleClearCanvas = () => {
+    setPaths([]);
+    currentPath.current = [];
+    setHandwritingError(null);
+  };
+
   useEffect(() => {
     let isMounted = true;
     setCurrentIndex(0);
@@ -47,6 +89,9 @@ export default function WritingScreen() {
     setEvaluationResult(null);
     setEarnedReward(null);
     setIsCompleted(false);
+    setPaths([]);
+    currentPath.current = [];
+    setHandwritingError(null);
 
     async function loadWritingExercises() {
       setIsLoading(true);
@@ -107,11 +152,79 @@ export default function WritingScreen() {
     setEarnedReward(reward);
   };
 
+  const handleCheckWriting = async () => {
+    if (paths.length === 0 || submittedAnswer !== null || isRecognizing) return;
+
+    setIsRecognizing(true);
+    setHandwritingError(null);
+
+    const languageCode = lang === 'ta' ? 'ta-IN' : 'en-IN';
+    const targetText = expectedAnswer || currentExercise?.prompt || currentExercise?.content || '';
+
+    try {
+      const strokeElements = paths
+        .map((stroke) => {
+          if (stroke.length === 0) return '';
+          if (stroke.length === 1) {
+            return `<circle cx="${stroke[0].x}" cy="${stroke[0].y}" r="6" fill="#000" />`;
+          }
+          const pointsStr = stroke.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+          return `<polyline points="${pointsStr}" fill="none" stroke="#000" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />`;
+        })
+        .join('\n');
+
+      const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="340" height="220" viewBox="0 0 340 220" style="background-color:#ffffff">
+  <rect width="100%" height="100%" fill="#ffffff" />
+  ${strokeElements}
+</svg>`;
+
+      const formData = new FormData();
+      formData.append('image', {
+        uri: `data:image/svg+xml;utf8,${encodeURIComponent(svgContent)}`,
+        name: 'handwriting.svg',
+        type: 'image/svg+xml',
+      } as any);
+      formData.append('languageCode', languageCode);
+      formData.append('targetText', targetText);
+
+      const response = await globalThis.fetch(`${API_BASE_URL}/api/handwriting-test`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const recognized = data.recognizedText || '';
+        setUserAnswer(recognized);
+        submitWritingAnswer(recognized);
+      } else {
+        setHandwritingError(
+          lang === 'ta'
+            ? 'படிக்க முடியவில்லை. மீண்டும் எழுதவும்.'
+            : "Couldn't read that. Try writing it again."
+        );
+      }
+    } catch (error) {
+      console.error('Handwriting recognition failed:', error);
+      setHandwritingError(
+        lang === 'ta'
+          ? 'படிக்க முடியவில்லை. மீண்டும் எழுதவும்.'
+          : "Couldn't read that. Try writing it again."
+      );
+    } finally {
+      setIsRecognizing(false);
+    }
+  };
+
   const handleNext = () => {
     setUserAnswer('');
     setSubmittedAnswer(null);
     setEvaluationResult(null);
     setEarnedReward(null);
+    setPaths([]);
+    currentPath.current = [];
+    setHandwritingError(null);
 
     if (currentIndex < totalQuestions - 1) {
       setCurrentIndex((prev) => prev + 1);
@@ -127,6 +240,9 @@ export default function WritingScreen() {
     setEvaluationResult(null);
     setEarnedReward(null);
     setIsCompleted(false);
+    setPaths([]);
+    currentPath.current = [];
+    setHandwritingError(null);
   };
 
   return (
@@ -230,33 +346,75 @@ export default function WritingScreen() {
                 </Text>
               </LearnlyCard>
 
-              {/* Text Input Area */}
+              {/* Scribble Pad Handwriting Area */}
               <View style={styles.inputSection}>
-                <Text style={styles.inputLabel}>
-                  {lang === 'ta' ? 'உங்கள் பதில்:' : 'Your Answer:'}
-                </Text>
-                <TextInput
+                <View style={styles.inputHeaderRow}>
+                  <Text style={styles.inputLabel}>
+                    {lang === 'ta' ? 'இங்கே விரலால் எழுதவும்:' : 'Draw / Write your answer:'}
+                  </Text>
+                  {paths.length > 0 && !submittedAnswer && (
+                    <Pressable
+                      style={styles.inlineClearBtn}
+                      onPress={handleClearCanvas}
+                      disabled={isRecognizing}
+                    >
+                      <Text style={styles.inlineClearBtnText}>
+                        {lang === 'ta' ? '🗑️ சுத்தம் செய்' : '🗑️ Clear'}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+
+                {/* Touch Canvas */}
+                <View
                   style={[
-                    styles.textInput,
+                    styles.scribbleCanvas,
                     {
                       borderColor: submittedAnswer
                         ? evaluationResult?.correct
                           ? '#10B981'
                           : '#F43F5E'
-                        : '#CBD5E1',
+                        : '#8B5CF6',
                     },
                   ]}
-                  placeholder={
-                    lang === 'ta' ? 'இங்கே எழுதவும்...' : 'Type your answer here...'
-                  }
-                  placeholderTextColor="#94A3B8"
-                  value={userAnswer}
-                  onChangeText={setUserAnswer}
-                  editable={!submittedAnswer}
-                  autoCapitalize="sentences"
-                  autoCorrect={false}
-                />
+                  {...panResponder.panHandlers}
+                >
+                  {paths.length === 0 && !submittedAnswer && (
+                    <View style={styles.canvasPlaceholder} pointerEvents="none">
+                      <Text style={styles.canvasPlaceholderText}>
+                        {lang === 'ta' ? '✍️ இங்கே எழுதவும்' : '✍️ Write here with your finger'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Render Drawing Strokes */}
+                  {paths.map((stroke, sIdx) => (
+                    <React.Fragment key={sIdx}>
+                      {stroke.map((pt, pIdx) => (
+                        <View
+                          key={pIdx}
+                          style={{
+                            position: 'absolute',
+                            left: pt.x - 5,
+                            top: pt.y - 5,
+                            width: 10,
+                            height: 10,
+                            borderRadius: 5,
+                            backgroundColor: '#0F172A',
+                          }}
+                        />
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </View>
               </View>
+
+              {/* Recognition Error Warning Banner */}
+              {handwritingError && (
+                <View style={styles.warningBanner}>
+                  <Text style={styles.warningText}>⚠️ {handwritingError}</Text>
+                </View>
+              )}
 
               {/* --- SCREEN 7: WRITING RESULT EVALUATION CARD --- */}
               {submittedAnswer && evaluationResult && (
@@ -346,13 +504,18 @@ export default function WritingScreen() {
                 </View>
               )}
 
-              {/* Submit / Next Button */}
+              {/* Check Writing / Next Question CTA Button */}
               {!submittedAnswer ? (
                 <LearnlyButton
-                  label={lang === 'ta' ? 'பதிலைச் சமர்ப்பி' : 'Submit Answer'}
-                  onPress={() => submitWritingAnswer(userAnswer)}
+                  label={
+                    isRecognizing
+                      ? (lang === 'ta' ? 'சரிபார்க்கிறது...' : 'Checking...')
+                      : (lang === 'ta' ? 'பதிலை சரிபார்க்கவும் ➔' : 'Check Writing ➔')
+                  }
+                  onPress={handleCheckWriting}
                   variant="secondary"
-                  disabled={!userAnswer.trim()}
+                  loading={isRecognizing}
+                  disabled={paths.length === 0 || isRecognizing}
                   style={{ marginTop: 16 }}
                 />
               ) : (
@@ -472,23 +635,62 @@ const styles = StyleSheet.create({
   inputSection: {
     marginBottom: 20,
   },
+  inputHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
   inputLabel: {
     fontSize: 14,
     fontWeight: '700',
     color: '#475569',
-    marginBottom: 6,
   },
-  textInput: {
-    minHeight: 56,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 18,
-    fontSize: 18,
+  inlineClearBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  inlineClearBtnText: {
+    fontSize: 12,
     fontWeight: '700',
+    color: '#475569',
+  },
+  scribbleCanvas: {
+    width: '100%',
+    height: 200,
     backgroundColor: '#FFFFFF',
-    color: '#0F172A',
+    borderRadius: 18,
     borderWidth: 2,
-    letterSpacing: 0.4,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  canvasPlaceholder: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  canvasPlaceholderText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  warningBanner: {
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  warningText: {
+    color: '#92400E',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   resultCard: {
     padding: 20,
