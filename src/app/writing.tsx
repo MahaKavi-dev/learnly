@@ -50,6 +50,7 @@ export default function WritingScreen() {
   const currentPath = useRef<Point[]>([]);
   const [isRecognizing, setIsRecognizing] = useState(false);
   const [handwritingError, setHandwritingError] = useState<string | null>(null);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -57,6 +58,7 @@ export default function WritingScreen() {
       onMoveShouldSetPanResponder: () => !submittedAnswer && !isRecognizing,
       onPanResponderGrant: (evt) => {
         if (submittedAnswer || isRecognizing) return;
+        setScrollEnabled(false);
         const { locationX, locationY } = evt.nativeEvent;
         currentPath.current = [{ x: locationX, y: locationY }];
       },
@@ -67,6 +69,14 @@ export default function WritingScreen() {
         setPaths((prev) => [...prev.slice(0, -1), [...currentPath.current]]);
       },
       onPanResponderRelease: () => {
+        setScrollEnabled(true);
+        if (currentPath.current.length > 0) {
+          setPaths((prev) => [...prev, [...currentPath.current]]);
+          currentPath.current = [];
+        }
+      },
+      onPanResponderTerminate: () => {
+        setScrollEnabled(true);
         if (currentPath.current.length > 0) {
           setPaths((prev) => [...prev, [...currentPath.current]]);
           currentPath.current = [];
@@ -248,6 +258,7 @@ export default function WritingScreen() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F8FAFC' }]}>
       <ScrollView
+        scrollEnabled={scrollEnabled}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
@@ -392,12 +403,14 @@ export default function WritingScreen() {
                     </View>
                   )}
 
-                  {/* Render Drawing Strokes */}
-                  {paths.map((stroke, sIdx) => (
-                    <React.Fragment key={sIdx}>
-                      {stroke.map((pt, pIdx) => (
+                  {/* Render Continuous Drawing Strokes */}
+                  {paths.map((stroke, sIdx) => {
+                    if (stroke.length === 0) return null;
+                    if (stroke.length === 1) {
+                      const pt = stroke[0];
+                      return (
                         <View
-                          key={pIdx}
+                          key={`dot-${sIdx}`}
                           style={{
                             position: 'absolute',
                             left: pt.x - 5,
@@ -408,9 +421,61 @@ export default function WritingScreen() {
                             backgroundColor: '#0F172A',
                           }}
                         />
-                      ))}
-                    </React.Fragment>
-                  ))}
+                      );
+                    }
+                    return (
+                      <React.Fragment key={`stroke-${sIdx}`}>
+                        {stroke.slice(0, -1).map((p1, pIdx) => {
+                          const p2 = stroke[pIdx + 1];
+                          const dx = p2.x - p1.x;
+                          const dy = p2.y - p1.y;
+                          const dist = Math.sqrt(dx * dx + dy * dy);
+                          const angle = Math.atan2(dy, dx);
+                          const midX = (p1.x + p2.x) / 2;
+                          const midY = (p1.y + p2.y) / 2;
+
+                          return (
+                            <React.Fragment key={`seg-${sIdx}-${pIdx}`}>
+                              <View
+                                style={{
+                                  position: 'absolute',
+                                  left: p1.x - 5,
+                                  top: p1.y - 5,
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: 5,
+                                  backgroundColor: '#0F172A',
+                                }}
+                              />
+                              <View
+                                style={{
+                                  position: 'absolute',
+                                  left: midX - dist / 2,
+                                  top: midY - 5,
+                                  width: dist,
+                                  height: 10,
+                                  borderRadius: 5,
+                                  backgroundColor: '#0F172A',
+                                  transform: [{ rotate: `${angle}rad` }],
+                                }}
+                              />
+                            </React.Fragment>
+                          );
+                        })}
+                        <View
+                          style={{
+                            position: 'absolute',
+                            left: stroke[stroke.length - 1].x - 5,
+                            top: stroke[stroke.length - 1].y - 5,
+                            width: 10,
+                            height: 10,
+                            borderRadius: 5,
+                            backgroundColor: '#0F172A',
+                          }}
+                        />
+                      </React.Fragment>
+                    );
+                  })}
                 </View>
               </View>
 
