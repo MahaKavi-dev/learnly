@@ -151,14 +151,24 @@ export default function HomeScreen() {
                     <Text style={styles.userSubtext}>Ready to learn today?</Text>
                   </View>
                 </View>
-                <Pressable style={styles.langPill} onPress={handleResetLanguage}>
-                  <Text style={styles.langPillFlag}>
-                    {selectedLanguage === 'en' ? '🇬🇧' : '🇮🇳'}
-                  </Text>
-                  <Text style={styles.langPillText}>
-                    {selectedLanguage === 'en' ? 'EN' : 'TA'}
-                  </Text>
-                </Pressable>
+                <View style={styles.headerActions}>
+                  <Pressable
+                    style={({ pressed }) => [styles.settingsBtn, pressed && styles.cardPressed]}
+                    onPress={() => router.push('/profile')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Settings"
+                  >
+                    <Text style={styles.settingsBtnIcon}>⚙️</Text>
+                  </Pressable>
+                  <Pressable style={styles.langPill} onPress={handleResetLanguage}>
+                    <Text style={styles.langPillFlag}>
+                      {selectedLanguage === 'en' ? '🇬🇧' : '🇮🇳'}
+                    </Text>
+                    <Text style={styles.langPillText}>
+                      {selectedLanguage === 'en' ? 'EN' : 'TA'}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
 
               {/* Stats Chips Row */}
@@ -392,6 +402,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
   },
   avatar: {
     fontSize: 40,
@@ -406,13 +417,31 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#64748B',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  settingsBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  settingsBtnIcon: {
+    fontSize: 20,
+  },
   langPill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F1F5F9',
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    minHeight: 44,
+    borderRadius: 22,
     gap: 6,
     borderWidth: 1,
     borderColor: '#CBD5E1',

@@ -374,11 +374,16 @@ export default function WritingScreen() {
                         ? evaluationResult?.correct
                           ? '#10B981'
                           : '#F43F5E'
-                        : '#8B5CF6',
+                        : paths.length > 0
+                        ? '#4F46E5'
+                        : '#CBD5E1',
                     },
                   ]}
                   {...panResponder.panHandlers}
                 >
+                  {/* Subtle Writing Baseline Guide */}
+                  <View style={styles.writingBaselineGuide} pointerEvents="none" />
+
                   {paths.length === 0 && !submittedAnswer && (
                     <View style={styles.canvasPlaceholder} pointerEvents="none">
                       <Text style={styles.canvasPlaceholderText}>
@@ -513,7 +518,7 @@ export default function WritingScreen() {
                       : (lang === 'ta' ? 'பதிலை சரிபார்க்கவும் ➔' : 'Check Writing ➔')
                   }
                   onPress={handleCheckWriting}
-                  variant="secondary"
+                  variant={paths.length > 0 ? 'primary' : 'secondary'}
                   loading={isRecognizing}
                   disabled={paths.length === 0 || isRecognizing}
                   style={{ marginTop: 16 }}
@@ -667,6 +672,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     overflow: 'hidden',
     position: 'relative',
+  },
+  writingBaselineGuide: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    top: '68%',
+    height: 2,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 1,
   },
   canvasPlaceholder: {
     ...StyleSheet.absoluteFill,
