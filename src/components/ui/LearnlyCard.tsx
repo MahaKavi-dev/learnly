@@ -50,9 +50,9 @@ const styles = StyleSheet.create({
   },
   elevated: {
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     elevation: 3,
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
   },
   pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.99 }],
+    opacity: 0.92,
+    transform: [{ scale: 0.985 }, { translateY: 1 }],
   },
 });

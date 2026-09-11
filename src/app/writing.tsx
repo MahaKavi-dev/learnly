@@ -466,7 +466,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
     textAlign: 'center',
-    lineHeight: 32,
+    lineHeight: 34,
+    letterSpacing: 0.5,
   },
   inputSection: {
     marginBottom: 20,
@@ -487,6 +488,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     color: '#0F172A',
     borderWidth: 2,
+    letterSpacing: 0.4,
   },
   resultCard: {
     padding: 20,

@@ -115,15 +115,18 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     backgroundColor: '#EDE9FE',
+    borderWidth: 1,
+    borderColor: '#C4B5FD',
   },
   pressed: {
-    opacity: 0.7,
+    opacity: 0.8,
+    transform: [{ scale: 0.95 }],
   },
   icon: {
     fontSize: 22,
   },
   activeIcon: {
-    transform: [{ scale: 1.1 }],
+    transform: [{ scale: 1.15 }],
   },
   label: {
     fontSize: 11,

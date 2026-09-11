@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   pressed: {
-    transform: [{ translateY: 2 }],
+    transform: [{ translateY: 2 }, { scale: 0.98 }],
     borderBottomWidth: 2,
     shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 2 },
