@@ -326,22 +326,6 @@ export default function ReadingScreen() {
     }
   };
 
-  const handleHearIt = () => {
-    const textToSpeak = currentExercise.text || currentExercise.content || '';
-    if (!textToSpeak) return;
-    try {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(textToSpeak);
-        utterance.lang = lang === 'ta' ? 'ta-IN' : 'en-US';
-        utterance.rate = 0.85;
-        window.speechSynthesis.speak(utterance);
-      }
-    } catch (err) {
-      console.warn('Speech synthesis unavailable:', err);
-    }
-  };
-
   const handleMicTap = () => {
     if (micState === 'LISTENING') {
       stopReading();
@@ -863,24 +847,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     lineHeight: 24,
   },
-  hearItButton: {
-    marginTop: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#EEF2FF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-  },
   hearItDisabled: {
     opacity: 0.6,
-  },
-  hearItText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#4F46E5',
   },
 });
