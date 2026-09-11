@@ -190,3 +190,49 @@ export async function fetchBackendExercises(params: FetchExercisesParams): Promi
 
   return filtered.length > 0 ? filtered : localList;
 }
+
+export interface TTSResponse {
+  audio: string;
+  contentType: string;
+}
+
+/**
+ * Synthesizes text to speech using Sarvam Bulbul v3 backend endpoint.
+ * 
+ * Endpoint: POST /api/tts
+ */
+export async function requestTextToSpeech(text: string, language: string): Promise<TTSResponse> {
+  const languageCode = language === 'ta' || language === 'ta-IN' ? 'ta-IN' : 'en-IN';
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+  try {
+    const response = await globalThis.fetch(`${API_BASE_URL}/api/tts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: text.trim(),
+        languageCode,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`TTS server returned status ${response.status}: ${errText}`);
+    }
+
+    const data: TTSResponse = await response.json();
+    return data;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    console.error('FastAPI TTS request failed:', error);
+    throw error;
+  }
+}
+
