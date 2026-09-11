@@ -276,6 +276,22 @@ export default function ReadingScreen() {
     }
   };
 
+  const handleHearIt = () => {
+    const textToSpeak = currentExercise.text || currentExercise.content || '';
+    if (!textToSpeak) return;
+    try {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.lang = lang === 'ta' ? 'ta-IN' : 'en-US';
+        utterance.rate = 0.85;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (err) {
+      console.warn('Speech synthesis unavailable:', err);
+    }
+  };
+
   const handleMicTap = () => {
     if (micState === 'LISTENING') {
       stopReading();
@@ -397,9 +413,22 @@ export default function ReadingScreen() {
                 {isLoadingNext ? (
                   <ActivityIndicator color="#4F46E5" size="large" />
                 ) : (
-                  <Text style={styles.sentenceText}>
-                    "{currentExercise.text || currentExercise.content || ''}"
-                  </Text>
+                  <View style={{ alignItems: 'center', width: '100%', gap: 16 }}>
+                    <Text style={styles.sentenceText}>
+                      "{currentExercise.text || currentExercise.content || ''}"
+                    </Text>
+                    <Pressable
+                      style={({ pressed }) => [styles.hearItButton, pressed && styles.pressed]}
+                      onPress={handleHearIt}
+                      accessibilityRole="button"
+                      accessibilityLabel="Listen to pronunciation"
+                    >
+                      <Text style={styles.hearItIcon}>🔊</Text>
+                      <Text style={styles.hearItText}>
+                        {lang === 'ta' ? 'ஒலியைக் கேள்' : 'Hear It'}
+                      </Text>
+                    </Pressable>
+                  </View>
                 )}
               </LearnlyCard>
 
@@ -624,6 +653,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 40,
     letterSpacing: 0.6,
+  },
+  hearItButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#C4B5FD',
+  },
+  hearItIcon: {
+    fontSize: 16,
+  },
+  hearItText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#4F46E5',
   },
   micSection: {
     alignItems: 'center',
