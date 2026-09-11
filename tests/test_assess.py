@@ -421,5 +421,95 @@ def test_assess_streak_invalid_child_id(monkeypatch):
     assert r.json()["detail"] == "Child not found"
 
 
+def test_extract_target_text_normalization():
+    from app.services.mock_assessment import extract_target_text
+    assert extract_target_text("Find the letter: B") == "B"
+    assert extract_target_text("Read this word: CAT") == "CAT"
+    assert extract_target_text("இந்த சொல்லை படி: அம்மா") == "அம்மா"
+    assert extract_target_text("அ என்ற எழுத்தை கண்டுபிடி.") == "அ"
+    assert extract_target_text("அ என்ற எழுத்தை கண்டுபிடி") == "அ"
+
+
+def test_gemini_assessment_structured_response(monkeypatch):
+    from app.services.gemini import GeminiAssessment, assess_with_gemini
+    from app.schemas.assessment import AssessmentRequest, Language, Skill
+
+    class MockModelResponse:
+        parsed = GeminiAssessment(
+            score=100,
+            accuracy=100,
+            fluency=100,
+            skill=Skill.reading_accuracy,
+            needsPractice=False,
+            feedback="Great job reading!"
+        )
+
+    class MockModelsClient:
+        def generate_content(self, model, contents, config):
+            return MockModelResponse()
+
+    class MockGenAIClient:
+        def __init__(self, api_key=None):
+            self.models = MockModelsClient()
+
+    monkeypatch.setenv("GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr("google.genai.Client", MockGenAIClient)
+
+    req = AssessmentRequest(
+        exerciseId="ef319c72-2dbd-4d7c-9726-32362d13c8dc",
+        expectedText="Find the letter: B",
+        userTranscript="Find the letter B",
+        language=Language.en
+    )
+
+    res = assess_with_gemini(req)
+    assert res.score == 100
+    assert res.accuracy == 100
+    assert res.fluency == 100
+    assert res.needsPractice is False
+    assert res.feedback == "Great job reading!"
+
+
+def test_gemini_assessment_tamil_structured_response(monkeypatch):
+    from app.services.gemini import GeminiAssessment, assess_with_gemini
+    from app.schemas.assessment import AssessmentRequest, Language, Skill
+
+    class MockModelResponse:
+        parsed = GeminiAssessment(
+            score=100,
+            accuracy=100,
+            fluency=100,
+            skill=Skill.reading_accuracy,
+            needsPractice=False,
+            feedback="மிகவும் அருமை!"
+        )
+
+    class MockModelsClient:
+        def generate_content(self, model, contents, config):
+            return MockModelResponse()
+
+    class MockGenAIClient:
+        def __init__(self, api_key=None):
+            self.models = MockModelsClient()
+
+    monkeypatch.setenv("SARVAM_API_KEY", "dummy_key")
+    monkeypatch.setenv("GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr("google.genai.Client", MockGenAIClient)
+
+    req = AssessmentRequest(
+        exerciseId="86511ec0-06d2-4133-b5bc-408db8fbc42c",
+        expectedText="அ என்ற எழுத்தை கண்டுபிடி.",
+        userTranscript="அ என்ற எழுத்தை கண்டுபிடி",
+        language=Language.ta
+    )
+
+    res = assess_with_gemini(req)
+    assert res.score == 100
+    assert res.accuracy == 100
+    assert res.needsPractice is False
+    assert res.feedback == "மிகவும் அருமை!"
+
+
+
 
 

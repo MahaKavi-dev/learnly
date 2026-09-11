@@ -36,10 +36,6 @@ async def stt(
     except ValueError as err:
         logger.warning(f"STT Validation error: {err}")
         raise HTTPException(status_code=400, detail=str(err))
-    except PermissionError as err:
-        logger.error(f"STT Auth/Permission error: {err}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(err))
     except RuntimeError as err:
         logger.error(f"STT Runtime error: {err}")
         traceback.print_exc()
@@ -47,4 +43,4 @@ async def stt(
     except Exception as err:
         logger.error(f"STT Exception [{type(err).__name__}]: {err}")
         traceback.print_exc()
-        raise HTTPException(status_code=502, detail=f"Speech-to-Text service failed: {type(err).__name__}")
+        raise HTTPException(status_code=500, detail=f"Local Speech-to-Text failed: {err}")

@@ -23,10 +23,10 @@ def test_stt_empty_file():
     assert "empty or missing" in response.json()["detail"].lower()
 
 def test_normalize_language():
-    assert _normalize_language("en-IN") == "en"
-    assert _normalize_language("ta-IN") == "ta"
-    assert _normalize_language("en") == "en"
-    assert _normalize_language("ta") == "ta"
+    assert _normalize_language("en-IN") == "en-IN"
+    assert _normalize_language("ta-IN") == "ta-IN"
+    assert _normalize_language("en") == "en-IN"
+    assert _normalize_language("ta") == "ta-IN"
 
 def test_normalize_transcript_text():
     assert normalize_transcript_text("  The   sun   is bright. \n ") == "The sun is bright."
@@ -62,40 +62,166 @@ def test_stt_no_speech_handling(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"transcript": ""}
 
-def test_transcribe_audio_mocked_whisper(monkeypatch):
-    class MockSegment:
-        def __init__(self, text, no_speech_prob=0.01, avg_logprob=-0.2):
-            self.text = text
-            self.no_speech_prob = no_speech_prob
-            self.avg_logprob = avg_logprob
+def test_sarvam_stt_tamil_success(monkeypatch):
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {"transcript": "பூனை ஓடுகிறது", "language_code": "ta-IN"}
 
-    class MockModel:
-        def transcribe(self, audio_path, language, beam_size=5, temperature=0.0, vad_filter=True, vad_parameters=None, condition_on_previous_text=False):
-            return [MockSegment("The sun is bright.")], None
+    class MockClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def post(self, url, headers, data, files):
+            assert url == "https://api.sarvam.ai/speech-to-text"
+            assert headers.get("api-subscription-key") == "dummy_sarvam_key"
+            assert data.get("language_code") == "ta-IN"
+            assert data.get("model") == "saaras:v4"
+            assert data.get("mode") == "transcribe"
+            return MockResponse()
 
-    monkeypatch.setattr("app.services.speech_to_text._get_whisper_model", lambda: MockModel())
-    monkeypatch.setattr("app.services.speech_to_text._convert_audio_to_wav", lambda b, input_extension=".wav": b)
+    monkeypatch.setenv("SARVAM_API_KEY", "dummy_sarvam_key")
+    monkeypatch.setattr("httpx.Client", MockClient)
 
-    res = transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
-    assert res == "The sun is bright."
+    res = transcribe_audio(b"RIFFdummyWAV", "tamil_speech.wav", "ta-IN")
+    assert res == "பூனை ஓடுகிறது"
 
-def test_transcribe_audio_filters_noise_segments(monkeypatch):
-    class MockSegment:
-        def __init__(self, text, no_speech_prob=0.0, avg_logprob=0.0):
-            self.text = text
-            self.no_speech_prob = no_speech_prob
-            self.avg_logprob = avg_logprob
 
-    class MockModel:
-        def transcribe(self, audio_path, language, **kwargs):
-            return [
-                MockSegment("Hallucinated noise text", no_speech_prob=0.85, avg_logprob=-0.1),
-                MockSegment("Valid spoken text", no_speech_prob=0.05, avg_logprob=-0.2),
-            ], None
+def test_sarvam_stt_english_success(monkeypatch):
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {"transcript": "Find the letter B", "language_code": "en-IN"}
 
-    monkeypatch.setattr("app.services.speech_to_text._get_whisper_model", lambda: MockModel())
-    monkeypatch.setattr("app.services.speech_to_text._convert_audio_to_wav", lambda b, input_extension=".wav": b)
+    class MockClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def post(self, url, headers, data, files):
+            assert url == "https://api.sarvam.ai/speech-to-text"
+            assert headers.get("api-subscription-key") == "dummy_sarvam_key"
+            assert data.get("language_code") == "en-IN"
+            assert data.get("model") == "saaras:v4"
+            assert data.get("mode") == "transcribe"
+            return MockResponse()
 
-    res = transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
-    assert res == "Valid spoken text"
+    monkeypatch.setenv("SARVAM_API_KEY", "dummy_sarvam_key")
+    monkeypatch.setattr("httpx.Client", MockClient)
 
+    res = transcribe_audio(b"RIFFdummyWAV", "english_speech.wav", "en-IN")
+    assert res == "Find the letter B"
+
+
+def test_sarvam_stt_missing_api_key(monkeypatch):
+    monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+    try:
+        transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as err:
+        assert "SARVAM_API_KEY is missing" in str(err)
+
+
+def test_sarvam_stt_400_bad_request(monkeypatch):
+    class MockResponse:
+        status_code = 400
+        text = "Invalid file format"
+
+    class MockClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def post(self, *args, **kwargs):
+            return MockResponse()
+
+    monkeypatch.setenv("SARVAM_API_KEY", "dummy_key")
+    monkeypatch.setattr("httpx.Client", MockClient)
+
+    try:
+        transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
+        assert False, "Should have raised ValueError"
+    except ValueError as err:
+        assert "Sarvam STT Bad Request" in str(err)
+
+
+def test_sarvam_stt_401_auth_error(monkeypatch):
+    class MockResponse:
+        status_code = 401
+        text = "Unauthorized"
+
+    class MockClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def post(self, *args, **kwargs):
+            return MockResponse()
+
+    monkeypatch.setenv("SARVAM_API_KEY", "invalid_key")
+    monkeypatch.setattr("httpx.Client", MockClient)
+
+    try:
+        transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as err:
+        assert "Authentication failed" in str(err)
+
+
+def test_sarvam_stt_429_rate_limit(monkeypatch):
+    class MockResponse:
+        status_code = 429
+        text = "Rate limit exceeded"
+
+    class MockClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def post(self, *args, **kwargs):
+            return MockResponse()
+
+    monkeypatch.setenv("SARVAM_API_KEY", "dummy_key")
+    monkeypatch.setattr("httpx.Client", MockClient)
+
+    try:
+        transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as err:
+        assert "rate limit exceeded" in str(err)
+
+
+def test_sarvam_stt_500_server_error(monkeypatch):
+    class MockResponse:
+        status_code = 500
+        text = "Internal Server Error"
+
+    class MockClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def post(self, *args, **kwargs):
+            return MockResponse()
+
+    monkeypatch.setenv("SARVAM_API_KEY", "dummy_key")
+    monkeypatch.setattr("httpx.Client", MockClient)
+
+    try:
+        transcribe_audio(b"RIFFdummyWAV", "test.wav", "en-IN")
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as err:
+        assert "Sarvam STT service error" in str(err)

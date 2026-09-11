@@ -9,11 +9,13 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
+  createAudioPlayer,
   getRecordingPermissionsAsync,
   RecordingPresets,
   requestRecordingPermissionsAsync,
   useAudioRecorder,
 } from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LanguageChip } from '@/components/ui/Chips';
@@ -23,7 +25,7 @@ import { MicButtonState, MicrophoneButton } from '@/components/ui/MicrophoneButt
 import { getCurrentChildId } from '@/config/learner';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { READING_EXERCISES } from '@/data/exercises';
-import { assessReading, fetchBackendExercises, transcribeAudio } from '@/services/api';
+import { assessReading, fetchBackendExercises, requestTextToSpeech, transcribeAudio } from '@/services/api';
 import { recordExerciseCompletion } from '@/services/gamification';
 import { AssessmentResponse } from '@/types/assessment';
 import { ExerciseItem, Language, ReadingExercise } from '@/types/exercise';
@@ -53,6 +55,54 @@ export default function ReadingScreen() {
   const [isAssessing, setIsAssessing] = useState(false);
   const [assessmentResult, setAssessmentResult] = useState<AssessmentResponse | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  // TTS Pronunciation State
+  const [ttsState, setTtsState] = useState<'IDLE' | 'LOADING' | 'PLAYING' | 'ERROR'>('IDLE');
+  const [activeTtsPlayer, setActiveTtsPlayer] = useState<any>(null);
+
+  const handleHearIt = async () => {
+    if (ttsState === 'LOADING') return;
+
+    if (ttsState === 'PLAYING' && activeTtsPlayer) {
+      try {
+        activeTtsPlayer.pause();
+      } catch {}
+      setTtsState('IDLE');
+      return;
+    }
+
+    const targetSentence = (currentExercise.text || currentExercise.content || '').trim();
+    if (!targetSentence) return;
+
+    try {
+      setTtsState('LOADING');
+      const response = await requestTextToSpeech(targetSentence, currentExercise.language || lang);
+
+      const fileUri = `${FileSystem.cacheDirectory}tts_sample.wav`;
+      await FileSystem.writeAsStringAsync(fileUri, response.audio, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const player = createAudioPlayer(fileUri);
+      setActiveTtsPlayer(player);
+      setTtsState('PLAYING');
+
+      player.play();
+
+      const pollInterval = setInterval(() => {
+        if (!player.playing || player.paused) {
+          clearInterval(pollInterval);
+          setTtsState('IDLE');
+        }
+      }, 400);
+    } catch (error) {
+      console.error('Hear It TTS failed:', error);
+      setTtsState('ERROR');
+      setTimeout(() => {
+        setTtsState('IDLE');
+      }, 2500);
+    }
+  };
 
   const progressPercent = (questionCount / SESSION_TARGET_QUESTIONS) * 100;
 
@@ -812,5 +862,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 24,
+  },
+  hearItButton: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  hearItDisabled: {
+    opacity: 0.6,
+  },
+  hearItText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4F46E5',
   },
 });

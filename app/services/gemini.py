@@ -17,16 +17,24 @@ def assess_with_gemini(req: AssessmentRequest) -> AssessmentResponse:
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
     client = genai.Client(api_key=api_key)
-    model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+    
+    from app.services.mock_assessment import extract_target_text
+    target_exp = extract_target_text(req.expectedText)
+    target_act = extract_target_text(req.userTranscript)
+
     prompt = f"""
-You are an educational response evaluator for Learnly.
+You are an educational response evaluator for Learnly, evaluating a primary school child's reading practice.
 Do not diagnose dyslexia or make medical claims.
 Language: {req.language.value}
-Exercise ID: {req.exerciseId}
-Expected text: {req.expectedText}
-Student transcript: {req.userTranscript}
-Evaluate this reading response. Return only the structured fields.
-Give child-friendly feedback in the student's language.
+Expected target text: "{target_exp}"
+Student spoken transcript: "{target_act}" (Raw: "{req.userTranscript}")
+
+Evaluation Guidelines:
+1. Ignore minor punctuation, case, accents, or instruction words (e.g. "Find the letter", "Read this word", "சொல்லை படி").
+2. If the student accurately spoke the target text/letter/words, return a high score (90-100), high accuracy (90-100), high fluency (90-100), set needsPractice=false, and give encouraging child-friendly feedback in {req.language.value}.
+3. Only set needsPractice=true if the student severely misread or missed the core target text.
+Return only the structured GeminiAssessment JSON object.
 """
     try:
         response = client.models.generate_content(
@@ -48,10 +56,10 @@ Give child-friendly feedback in the student's language.
             nextDifficulty="medium",
         )
     except Exception as exc:
-        print(f"Gemini evaluation failed with model {model}: {exc}. Retrying with gemini-1.5-flash...")
+        print(f"Gemini evaluation failed with model {model}: {exc}. Retrying with gemini-flash-lite-latest...")
         try:
             response = client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-flash-lite-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",

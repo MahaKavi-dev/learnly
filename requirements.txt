@@ -6,5 +6,4 @@ google-genai
 supabase
 pytest
 python-multipart
-faster-whisper
-imageio-ffmpeg
+httpx
