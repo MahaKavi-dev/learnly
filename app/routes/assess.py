@@ -107,7 +107,9 @@ def assess(request: AssessmentRequest):
     # ---------------------------------------------------------
     # 5. Use database expected answer
     # ---------------------------------------------------------
-    expected_text = exercise.get("expected_answer") or request.expectedText
+    from app.services.mock_assessment import extract_target_text
+    raw_expected = exercise.get("expected_answer") or request.expectedText or exercise.get("content") or ""
+    expected_text = extract_target_text(raw_expected)
 
     assessment_request = request.model_copy(
         update={"expectedText": expected_text}

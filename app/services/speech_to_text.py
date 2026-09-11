@@ -133,7 +133,7 @@ def transcribe_audio(file_bytes: bytes, filename: str, language: str) -> str:
         for segment in segments:
             no_speech_prob = getattr(segment, "no_speech_prob", 0.0)
             avg_logprob = getattr(segment, "avg_logprob", 0.0)
-            if no_speech_prob > 0.6 or (avg_logprob < -1.5 and avg_logprob != 0.0):
+            if no_speech_prob > 0.80 or (avg_logprob < -2.0 and avg_logprob != 0.0):
                 logger.info(f"Skipping noise/hallucinated segment: text='{segment.text}', no_speech_prob={no_speech_prob}, avg_logprob={avg_logprob}")
                 continue
             if segment.text and segment.text.strip():

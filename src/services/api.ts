@@ -58,7 +58,7 @@ export async function assessReading(payload: AssessmentRequest): Promise<Assessm
  * Primary Endpoint: POST /api/stt
  * Fallback Endpoint: POST /api/transcribe
  */
-export async function transcribeAudio(audioUri: string, language: string): Promise<string> {
+export function transcribeAudio(audioUri: string, language: string): Promise<string> {
   const languageCode = language === 'ta' ? 'ta-IN' : 'en-IN';
 
   // Ensure uri starts with file:// on Android if missing local file scheme
@@ -69,9 +69,16 @@ export async function transcribeAudio(audioUri: string, language: string): Promi
 
   const fileExtension = cleanUri.split('.').pop()?.split('?')[0] || 'm4a';
   const fileName = `recording.${fileExtension}`;
-  const mimeType = fileExtension === 'wav' ? 'audio/wav' : fileExtension === 'mp3' ? 'audio/mp3' : 'audio/m4a';
+  const mimeType =
+    fileExtension === 'wav'
+      ? 'audio/wav'
+      : fileExtension === 'mp3'
+      ? 'audio/mp3'
+      : fileExtension === 'ogg'
+      ? 'audio/ogg'
+      : 'audio/m4a';
 
-  // React Native native FormData part object shape
+  // Native React Native FormData part object shape
   const formData = new FormData();
   formData.append('file', {
     uri: cleanUri,
@@ -80,45 +87,37 @@ export async function transcribeAudio(audioUri: string, language: string): Promi
   } as any);
   formData.append('language', languageCode);
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout for STT inference
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const url = `${API_BASE_URL}/api/stt`;
 
-  try {
-    let response = await globalThis.fetch(`${API_BASE_URL}/api/stt`, {
-      method: 'POST',
-      body: formData as any,
-      signal: controller.signal,
-    });
+    xhr.open('POST', url);
+    xhr.timeout = 60000; // 60s timeout for local Whisper STT inference
 
-    if (response.status === 404) {
-      const fallbackFormData = new FormData();
-      fallbackFormData.append('file', {
-        uri: cleanUri,
-        name: fileName,
-        type: mimeType,
-      } as any);
-      fallbackFormData.append('language', languageCode);
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          resolve(data.transcript || data.text || '');
+        } catch (error) {
+          reject(new Error('Failed to parse STT response JSON.'));
+        }
+      } else {
+        reject(new Error(`STT server returned status ${xhr.status}`));
+      }
+    };
 
-      response = await globalThis.fetch(`${API_BASE_URL}/api/transcribe`, {
-        method: 'POST',
-        body: fallbackFormData as any,
-        signal: controller.signal,
-      });
-    }
+    xhr.onerror = (error) => {
+      console.error('XHR STT request failed:', error);
+      reject(new Error('STT network request failed.'));
+    };
 
-    clearTimeout(timeoutId);
+    xhr.ontimeout = () => {
+      reject(new Error('STT request timed out (60s).'));
+    };
 
-    if (!response.ok) {
-      throw new Error(`STT server returned status ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.transcript || data.text || '';
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    console.error('STT request failed:', error);
-    throw error;
-  }
+    xhr.send(formData);
+  });
 }
 
 export interface FetchExercisesParams {

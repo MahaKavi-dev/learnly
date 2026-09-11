@@ -17,7 +17,7 @@ def assess_with_gemini(req: AssessmentRequest) -> AssessmentResponse:
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
     client = genai.Client(api_key=api_key)
-    model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     prompt = f"""
 You are an educational response evaluator for Learnly.
 Do not diagnose dyslexia or make medical claims.
@@ -48,10 +48,10 @@ Give child-friendly feedback in the student's language.
             nextDifficulty="medium",
         )
     except Exception as exc:
-        print(f"Gemini evaluation failed with model {model}: {exc}. Retrying with gemini-1.5-flash...")
+        print(f"Gemini evaluation failed with model {model}: {exc}. Retrying with gemini-flash-latest...")
         try:
             response = client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-flash-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
